@@ -13,12 +13,14 @@ from ..campaigns.pmkid import PmkidHarvestAttack
 from ..campaigns.wep import WepCampaign
 from wifit3.crack.wep import CRACK_READY_THRESHOLD
 from wifit3.crack.handshake import pmkid_crackable
+from wifit3.persist.config import Config
 from ..campaigns.pin import WpsCampaign
+from ..campaigns.deauth import DeauthCampaign
 from ..campaigns.eviltwin import EvilTwinCampaign
 
 # Attack-button campaigns in button-row order.
-BUTTON_CAMPAIGNS = [WepCampaign, PmkidHarvestAttack, WpsCampaign, EvilTwinCampaign]
-_BUTTON_ORDER = ["btn-gen-ivs", "btn-chop", "btn-pmkid", "btn-wps-pin", "btn-eviltwin"]
+BUTTON_CAMPAIGNS = [WepCampaign, DeauthCampaign, PmkidHarvestAttack, WpsCampaign, EvilTwinCampaign]
+_BUTTON_ORDER = ["btn-gen-ivs", "btn-chop", "btn-deauth", "btn-pmkid", "btn-wps-pin", "btn-eviltwin"]
 
 
 @dataclass
@@ -26,6 +28,7 @@ class Campaigns:
     """The live attack-campaign handles a Focus screen owns."""
     wep: Optional[WepCampaign] = None
     wps: Optional[WpsCampaign] = None
+    deauth: Optional[DeauthCampaign] = None
     eviltwin: Optional[EvilTwinCampaign] = None
     pbc_busy: bool = False
 
@@ -269,6 +272,7 @@ class ButtonState:
 def derive_buttons(ap) -> dict[str, ButtonState]:
     """Per-button state, keyed by button id, registry-driven."""
     active = Campaign.active
+    silenced = Config.is_silenced(ap.bssid)
     states: dict[str, ButtonState] = {}
     for cls in BUTTON_CAMPAIGNS:
         vis = cls.visible(ap)
@@ -278,7 +282,7 @@ def derive_buttons(ap) -> dict[str, ButtonState]:
                 label=cls.run_label, variant=cls.run_variant)
         else:
             other = active is not None and active.key != cls.key
-            reason = cls.ineligible_reason(ap)
+            reason = "AP silenced" if silenced else cls.ineligible_reason(ap)
             states[cls.button_id] = ButtonState(
                 visible=vis,
                 disabled=reason is not None or other,
@@ -289,7 +293,7 @@ def derive_buttons(ap) -> dict[str, ButtonState]:
     chopping = wep_running and getattr(active, "chop_active", False)
     states["btn-chop"] = ButtonState(
         visible=WepCampaign.visible(ap),
-        disabled=not wep_running,
+        disabled=not wep_running or silenced,
         label="Stop Chop" if chopping else "ChopChop",
         variant="warning" if chopping else "primary",
     )
@@ -308,7 +312,7 @@ def client_rows(ap, array) -> list[ClientRow]:
     for mac, client in array.clients.items():
         if client.bssid != ap.bssid:
             continue
-        if mac in forged or client.is_self:
+        if mac in forged:
             continue
         rows.append(ClientRow(bssid=mac, power=client.signal, packets=client.packets))
     return rows
@@ -322,6 +326,8 @@ def card_dynamic(campaigns: Campaigns) -> str:
         return "● replaying"
     if campaigns.wps is not None:
         return "● WPS PIN"
+    if campaigns.deauth is not None:
+        return "● Deauth"
     if campaigns.eviltwin is not None:
         return "● EvilTwin"
     if campaigns.pbc_busy:
@@ -392,6 +398,13 @@ def derive_headline(ap, array, campaigns: Campaigns) -> list[str]:
                 f"[dim]probes: {stats.probes_direct} direct · "
                 f"{stats.probes_wildcard} wildcard[/dim]"]
 
+    # 3b. Deauth campaign running: provoking a re-handshake for the passive capture.
+    deauth = campaigns.deauth
+    if deauth is not None:
+        return ["[bold cyan]● Deauth[/bold cyan] forcing a re-handshake",
+                f"[dim]client acks:{deauth.client_acks}/{deauth.client_sent} · "
+                f"bcast:{deauth.bcast_sent}[/dim]"]
+
     # 4. Recovered credentials, when idle: WEP key / WPS PSK.
     if ap.wep_key is not None or any(p.kind == "WEP" for p in ap.persisted):
         return ["[black bold on green] ✓ WEP key recovered [/black bold on green]",
@@ -399,6 +412,10 @@ def derive_headline(ap, array, campaigns: Campaigns) -> list[str]:
     if ap.known_psk:
         return ["[black bold on green] ✓ WPS PSK recovered [/black bold on green]",
                 "[dim]see the event log for the passphrase[/dim]"]
+
+    if Config.is_silenced(ap.bssid):
+        return ["[dim]● Silenced[/dim]",
+                "[dim]campaigns off, handshakes ignored · press s to resume[/dim]"]
 
     # 4-5. Passive capture state: captured / partial / listening.
     if wep:
@@ -492,7 +509,7 @@ def fake_snapshot() -> FocusSnapshot:
         status=[
             "● EvilTwin active",
             "WPA2 twin up · waiting for M1·M2",
-            "handshake:  M1 ✓   M2 —",
+            "handshake:  M1 ✓   M2 -",
         ],
         power_dbm=-71,
         signal=6.0,

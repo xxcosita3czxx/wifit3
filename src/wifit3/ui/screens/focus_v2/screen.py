@@ -38,12 +38,14 @@ from wifit3.campaigns.wep import WepCampaign
 from wifit3.campaigns.eviltwin import EvilTwinCampaign, EvilTwinInput
 from wifit3.ui.screens.focus_v2.eviltwin_modal import EvilTwinInputModal
 from wifit3.campaigns.pin import WpsCampaign, load_run_state, run_progress_line
+from wifit3.campaigns.deauth import DeauthCampaign
 from wifit3.campaigns.pbc import WpsPbcCapture
 from wifit3.campaigns.wps.registrar import PinResult
 from wifit3.crack.handshake import handshake_uncrackable_label
 from wifit3.persist.save import (
     save_handshake, save_pmkid, save_wep_key, save_wps_pbc, save_wps_pin,
 )
+from wifit3.persist.config import Config
 
 from ... import focus_model as fm
 from ...capture_events import (
@@ -82,8 +84,8 @@ _PAD_RATE = 0.4
 _PBC_RETRY_COOLDOWN_S = 3.0
 
 _ATTACK_BUTTONS = [
-    ("btn-gen-ivs", "ARP Replay"), ("btn-chop", "ChopChop"), ("btn-pmkid", "PMKID"),
-    ("btn-wps-pin", "WPS PIN"), ("btn-eviltwin", "EvilTwin"),
+    ("btn-gen-ivs", "ARP Replay"), ("btn-chop", "ChopChop"), ("btn-deauth", "AutoDeauth"),
+    ("btn-pmkid", "PMKID"), ("btn-wps-pin", "WPS PIN"), ("btn-eviltwin", "EvilTwin"),
     ("btn-stop-pbc", "Stop PBC"),
 ]
 
@@ -132,11 +134,12 @@ class FocusViewV2(Screen):
     # Attack hotkeys come from the campaign registry
     BINDINGS = [
         Binding("escape", "go_back", "Back", show=True),
+        Binding("d", "deauth_all", "Deauth", show=True),
         *[Binding(cls.hotkey[0], f"campaign('{cls.key}')", cls.hotkey[1], show=True)
           for cls in fm.BUTTON_CAMPAIGNS if cls.hotkey],
         Binding("c", "campaign('chop')", "ChopChop", show=True),
-        Binding("d", "deauth_all", "Deauth all", show=True),
         Binding("w", "wps_pbc_mode", "WPS PBC", show=True),
+        Binding("s", "toggle_silence", "Silence", show=True),
         Binding("q", "app.quit", "Quit", show=True),
     ]
 
@@ -200,10 +203,12 @@ class FocusViewV2(Screen):
         self._pbc_user_stopped = False
         self._pbc_retry_after = 0.0   # monotonic time before which we won't re-arm a PBC retry
         self._pmkid_campaign: Optional[PmkidHarvestAttack] = None
+        self._deauth_campaign: Optional[DeauthCampaign] = None
         self._prev_stats = None
         self._campaign_toggles = {
             "wep": self._toggle_generate_ivs, "pmkid": self._toggle_pmkid,
             "wps": self._toggle_wps_pin, "chop": self._toggle_chop,
+            "deauth": self._toggle_deauth,
         }
         self._binding_sig: Optional[tuple] = None
         self._rspacer_w = -1                          # last-set spacer width; skip no-op relayouts
@@ -262,7 +267,7 @@ class FocusViewV2(Screen):
     def _campaigns(self) -> fm.Campaigns:
         return fm.Campaigns(
             wep=self._wep_campaign, wps=self._wps_campaign,
-            eviltwin=self._eviltwin_attack,
+            deauth=self._deauth_campaign, eviltwin=self._eviltwin_attack,
             pbc_busy=self._pbc_busy(),
         )
 
@@ -460,6 +465,8 @@ class FocusViewV2(Screen):
             self._stop_generate_ivs()
         if self._pmkid_campaign is not None and self._pmkid_campaign.done:
             self._finish_pmkid()
+        if self._deauth_campaign is not None and self._deauth_campaign.done:
+            self._finish_deauth()
         if self._eviltwin_attack is not None and self._eviltwin_attack.done:
             self._finish_eviltwin()
         if self._pbc_campaign is not None and self._pbc_campaign.done:
@@ -467,11 +474,7 @@ class FocusViewV2(Screen):
         # Clear the manual-stop suppression when the window closes; a fresh one re-arms.
         if not ap.wps_pbc_active:
             self._pbc_user_stopped = False
-        if (ap.wps_pbc_active and getattr(self.app, "pbc_enabled", True)
-                and time.monotonic() >= self._pbc_retry_after
-                and not self._pbc_busy() and not self._pbc_user_stopped and not ap.has_psk
-                and self._wep_campaign is None and self._wps_campaign is None
-                and self._eviltwin_attack is None):
+        if self._should_auto_invade_pbc(ap):
             self._start_pbc_capture(ap)
 
         snap = self._snapshot()
@@ -492,6 +495,19 @@ class FocusViewV2(Screen):
         array = self.app.array
         self._drive_leds(ap, array)
         self._drain_capture_events(ap, array.forged_macs if array else set(), time.time())
+
+    def _should_auto_invade_pbc(self, ap) -> bool:
+        if not (ap.wps_pbc_active and self.app.pbc_enabled):
+            return False
+        if Config.is_silenced(ap.bssid) or ap.is_hidden:
+            return False
+        if ap.has_psk or self._pbc_user_stopped:
+            return False
+        if time.monotonic() < self._pbc_retry_after or self._pbc_busy():
+            return False
+        # no other attack owns the target
+        return (self._wep_campaign is None and self._wps_campaign is None
+                and self._deauth_campaign is None and self._eviltwin_attack is None)
 
     def _distribute(self) -> None:
         """Fill the mid band to full 2-row sparklines."""
@@ -549,6 +565,8 @@ class FocusViewV2(Screen):
 
     def _drain_capture_events(self, ap, forged_macs: Set[str], now: float) -> None:
         # EAPOL + handshake completions go through the aggregator (one tree per client); PMKID / decloak are immediate.
+        if Config.is_silenced(ap.bssid):
+            return
         for ev in self._events.poll(ap, forged_macs=forged_macs):
             if ev.kind == CaptureKind.EAPOL:
                 self._eapol_agg.on_eapol(ev, now)
@@ -605,6 +623,8 @@ class FocusViewV2(Screen):
             await self.action_go_back()
         elif bid == "deauth-all":
             self.run_worker(self._run_deauth_broadcast(), exclusive=True)
+        elif bid == "btn-deauth":                       # before the inline-client ✕ (also ends "-deauth")
+            self._toggle_deauth()
         elif bid.endswith("-deauth"):
             mac = self.query_one("#clients", ClientsList).client_mac(bid)
             if mac:
@@ -637,7 +657,6 @@ class FocusViewV2(Screen):
         if action == "deauth_all":
             if ap is None:
                 return False
-            # Broadcast deauth is valid with no known clients; greyed only on PMF-Required.
             return None if fm.deauth_blocked(ap) else True
         return True
 
@@ -654,16 +673,16 @@ class FocusViewV2(Screen):
             self._binding_sig = sig
             self.refresh_bindings()
 
-    def action_deauth_all(self) -> None:
-        """'d': broadcast-deauth every client (the panel button's twin)."""
-        self.run_worker(self._run_deauth_broadcast(), exclusive=True)
-
     def action_campaign(self, camp_key: str) -> None:
         """Toggle a hotkey's campaign."""
         toggle = self._campaign_toggles.get(camp_key)
         if toggle is not None:
             toggle()
         self._sync_bindings()
+
+    def action_deauth_all(self) -> None:
+        """'d': one-shot broadcast deauth, matching the client-panel button."""
+        self.run_worker(self._run_deauth_broadcast(), exclusive=True)
 
     def action_wps_pbc_mode(self) -> None:
         """'w': toggle the shared WPS PBC auto-invade."""
@@ -677,6 +696,21 @@ class FocusViewV2(Screen):
         else:
             self._log("[bold]WPS PushButton Extraction[/bold] "
                       "[yellow]disabled[/yellow] [dim](detect only, press w to toggle)[/dim]")
+
+    def action_toggle_silence(self) -> None:
+        """'s': silence the focused AP (disable campaigns, ignore its handshakes/PMKIDs)."""
+        if self._target_ap is None:
+            return
+        bssid = self._target_ap.bssid.lower()
+        if bssid in Config.silenced_bssids:
+            Config.silenced_bssids.remove(bssid)
+            self._log("[green]● AP unsilenced[/green]")
+        else:
+            Config.silenced_bssids.append(bssid)
+            self._log("[yellow]● AP silenced: campaigns disabled, handshakes ignored[/yellow]")
+        self.app.persist_config()
+        self._refresh_buttons()
+        self._sync_bindings()
 
     # ----- deauth ------------------------------------------------------------
 
@@ -778,6 +812,45 @@ class FocusViewV2(Screen):
         """The 'Stop PMKID' button."""
         if self._pmkid_campaign is not None:
             self._pmkid_campaign.request_stop()
+
+    # ----- Deauth ------------------------------------------------------------
+
+    def _toggle_deauth(self) -> None:
+        if self._deauth_campaign is not None:
+            self._user_stop_deauth()
+        else:
+            self._start_deauth()
+        self._refresh_buttons()
+
+    def _start_deauth(self) -> None:
+        if self._deauth_campaign is not None:
+            return
+        ap = self._target_ap
+        array = self.app.array
+        if not ap or not array:
+            self._log("[red]✗ No target / interface. Aborting Deauth.[/red]")
+            return
+        self._log(f"[bold]Deauth[/bold] of [bold]{escape(ap.ssid or ap.bssid)}[/bold]: "
+                  "forcing a re-handshake")
+        self._deauth_campaign = DeauthCampaign(array, ap, log=self._log)
+        self._deauth_campaign.run()
+
+    def _user_stop_deauth(self) -> None:
+        """The 'Stop Deauth' button."""
+        if self._deauth_campaign is not None:
+            self._deauth_campaign.request_stop()
+
+    def _finish_deauth(self) -> None:
+        """Reap a completed deauth run. A captured handshake is saved+toasted by the
+        always-on capture path (CaptureKind.HANDSHAKE); we only log the campaign's end."""
+        camp = self._deauth_campaign
+        self._deauth_campaign = None
+        if camp is None:
+            return
+        if camp.captured:
+            self._log("[bold green]✓ Deauth provoked a crackable handshake[/bold green]")
+        else:
+            self._log("[bright_red bold]Deauth stopped[/]")
 
     # ----- EvilTwin ----------------------------------------------------------
 
