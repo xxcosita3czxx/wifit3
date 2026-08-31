@@ -17,14 +17,16 @@ import asyncio
 import logging
 import struct
 import time
-from typing import Callable, ClassVar, List, Optional
+from typing import Callable, ClassVar, List, Optional, Tuple
 
 import libusb_package
 import usb.core
+from usb.core import Device
 import usb.util
 
 from wifit3.chips.rx_reader import RxReaderThread
 from wifit3.chips.driver import DeviceID, Driver, FakeMacSupport, ProgressCallback
+from wifit3.chips.products import ALFA, TPLink
 from wifit3.errors import BringUpError
 from wifit3.dot11.parser import WlanFrameParser
 
@@ -63,12 +65,12 @@ f8:c9:03 f8:ce:21 f8:d1:11 fc:d7:33
 class AR9271V2Driver(Driver):
     """Atheros AR9271 / ALFA AWUS036NHA — 2.4 GHz, soft-MAC, ath9k_htc firmware."""
 
-    SUPPORTED_CHANNELS: ClassVar[List[int]] = list(range(1, 14))   # 2.4 GHz only, no 5 GHz radio
+    SUPPORTED_CHANNELS: ClassVar[List[int]] = list(range(1, 15))   # 2.4 GHz only, no 5 GHz radio
     CONFLICTING_LINUX_MODULES: ClassVar[List[str]] = ["ath9k_htc"]   # modprobe blacklist hint
     LINUX_REPLUG_AFTER_MODPROBE: ClassVar[bool] = True   # replug, not the fragile FW-download self-cold
     FAKE_MAC: ClassVar[FakeMacSupport] = FakeMacSupport.SPOOFABLE
 
-    def __init__(self, dev: usb.core.Device):
+    def __init__(self, dev: Device):
         super().__init__()          # base owns the ACK tally (_ack_detect_on / _our_tx_macs / _ack_counts)
         self.transport = AR9271Transport(dev)
         self.is_warm = False
@@ -81,7 +83,7 @@ class AR9271V2Driver(Driver):
         self._reader: Optional[RxReaderThread] = None
 
     @classmethod
-    def from_usb_device(cls, dev: usb.core.Device, id_entry: DeviceID) -> "AR9271V2Driver":
+    def from_usb_device(cls, dev: Device, id_entry: DeviceID) -> "AR9271V2Driver":
         drv = cls(dev)
         drv.product_name = id_entry.product_name   # SUPPORTED_IDS label; _adopt narrows by OUI
         return drv
@@ -93,8 +95,8 @@ class AR9271V2Driver(Driver):
         if not mac:
             return None
         if mac[:8].lower() in _TPLINK_OUIS:
-            return "TL-WN722N v1"
-        return "ALFA AWUS036NHA"
+            return TPLink.TL_WN722N_V1
+        return ALFA.AWUS036NHA
 
     def _refine_product_name(self) -> None:
         """Narrow the combined SUPPORTED_IDS label to one make once the EEPROM MAC is read; a
@@ -192,7 +194,7 @@ class AR9271V2Driver(Driver):
             logger.warning("ar9271_v2: post-boot handshake mis-framed (first bytes %s); "
                            "tearing down for one clean retry", e.raw[:8].hex(" "))
             await self._teardown_cold_attempt()
-            redev = await self._await_reenumeration()
+            redev = await self._await_reenumeration(self.transport.dev)
             if redev is not None:
                 self.transport = AR9271Transport(redev)
             try:
@@ -200,9 +202,9 @@ class AR9271V2Driver(Driver):
             except Exception as e2:  # noqa: BLE001
                 await self._teardown_cold_attempt()
                 raise BringUpError(
-                    "AR9271 did not come up cleanly after firmware download (its control pipe "
-                    "returned unexpected data twice). Unplug it, wait a few seconds, replug, and "
-                    "try again.") from e2
+                    "post-boot handshake",
+                    "failed after firmware download; please replug and try again."
+                ) from e2
 
     async def _bring_up_with_loop(self, loop, fw: bytes, _p) -> bool:
         """One full bring-up attempt under the app loop: warm-reattach if firmware is already
@@ -228,19 +230,32 @@ class AR9271V2Driver(Driver):
                     await self._reader.stop()
                     self._reader = None
                 raise BringUpError(
-                    "AR9271 is warm and couldn't be re-attached to. Please unplug the card, wait a "
-                    "few seconds, replug, and try again.") from e
+                    "warm reattach",
+                    "failed on warm re-attach; please replug and try again."
+                ) from e
 
         cold_dev = self.transport.dev
+        cold_ports = self._get_port_numbers(cold_dev)
+        unique_vidpid = False
+        if not cold_ports:
+            unique_vidpid = len(self._find_matching_ar9271_devices(cold_dev)) == 1
+
         _p(0.10, "Downloading AR9271 firmware...")
-        await loop.run_in_executor(None, firmware.download, self.transport, fw)
+        try:
+            await loop.run_in_executor(None, firmware.download, self.transport, fw)
+        except usb.core.USBError as e:
+            logger.warning("ar9271_v2: firmware download wedged (%s); falling back to replug", e)
+            raise BringUpError(
+                "firmware download",
+                "USB timeout; please replug and try again."
+            ) from e
         try:
             usb.util.dispose_resources(cold_dev)        # release the cold handle as it reboots
         except Exception:
             pass
 
         _p(0.30, "Waiting for AR9271 to re-enumerate...")
-        redev = await self._await_reenumeration()
+        redev = await self._await_reenumeration(cold_dev, unique_vidpid=unique_vidpid)
         if redev is None:
             raise BringUpError(
                 "re-enumeration",
@@ -255,7 +270,15 @@ class AR9271V2Driver(Driver):
         self._reader = RxReaderThread(loop, self._read_once, self._dispatch, name="ar9271v2-rx",
                                       on_fatal=lambda e: self._on_lost and self._on_lost(e))
         self._reader.start()
-        res = await loop.run_in_executor(None, bringup.cold_bringup, self.transport)
+        try:
+            res = await loop.run_in_executor(None, bringup.cold_bringup, self.transport)
+        except usb.core.USBError as e:
+            logger.warning("ar9271_v2: HTC/WMI init wedged (%s); falling back to replug", e)
+            await self._teardown_cold_attempt()
+            raise BringUpError(
+                "HTC/WMI init",
+                "USB timeout; please replug and try again."
+            ) from e
         self._adopt(res)
         _p(1.0, f"AR9271 monitor up (ch 1, {self.mac_address})")
         return True
@@ -272,13 +295,36 @@ class AR9271V2Driver(Driver):
         except Exception:  # noqa: BLE001
             pass
 
-    async def _await_reenumeration(self) -> Optional[usb.core.Device]:
+    def _get_port_numbers(self, dev: Device) -> Tuple[int, ...]:
+        """Hub port numbers from root to ``dev``, via PyUSB's non-public ``port_numbers``."""
+        return tuple(getattr(dev, "port_numbers", None) or ())
+
+    def _find_matching_ar9271_devices(self, dev: Device) -> List[Device]:
+        vid = getattr(dev, "idVendor", C.AR9271_VID)
+        pid = getattr(dev, "idProduct", C.AR9271_PID)
         backend = libusb_package.get_libusb1_backend()
+        found = usb.core.find(find_all=True, backend=backend,
+                              idVendor=vid, idProduct=pid)
+        return list(found or ())
+
+    async def _await_reenumeration(self, original: Device, *, unique_vidpid: bool = False) -> Optional[Device]:
+        """Reacquire this device, not an identical sibling.
+        ``unique_vidpid`` is true if no other attached devices share this VID:PID."""
+        og_bus = original.bus
+        og_addr = original.address
+        og_ports = self._get_port_numbers(original)
         for _ in range(12):                 # ~3 s; the chip boots its text image and re-attaches
             await asyncio.sleep(0.25)
-            dev = usb.core.find(idVendor=C.AR9271_VID, idProduct=C.AR9271_PID, backend=backend)
-            if dev is not None:
+            matching_devs = self._find_matching_ar9271_devices(original)
+            for dev in matching_devs:
+                if og_ports:
+                    if dev.bus != og_bus or self._get_port_numbers(dev) != og_ports:
+                        continue  # Plugged in to a different bus/port, ignore.
+                elif (dev.bus, dev.address) != (og_bus, og_addr):
+                    continue  # Not the same bus/address, ignore.
                 return dev
+            if not og_ports and unique_vidpid and len(matching_devs) == 1:
+                return matching_devs[0]  # Single device for this VID:PID
         return None
 
     def _is_chip_warm(self) -> bool:
@@ -322,7 +368,7 @@ class AR9271V2Driver(Driver):
             except Exception as e:                 # noqa: BLE001 — best-effort toggle resync
                 logger.debug("ar9271_v2: clear_halt(0x%02x) skipped: %s", ep, e)
 
-    def _claim(self, dev: usb.core.Device) -> None:
+    def _claim(self, dev: Device) -> None:
         """Configure + claim interface 0 on the (re-enumerated, firmware-booted) device. The
         bulk/interrupt pipes the bring-up + RX use need the interface claimed (EP0 control — the
         firmware download — does not, which is why that succeeds first). Right after re-enumeration
@@ -341,7 +387,7 @@ class AR9271V2Driver(Driver):
             except (usb.core.USBError, NotImplementedError) as e:
                 last = e
                 time.sleep(0.15)
-        raise BringUpError(f"AR9271 interface not claimable after re-enumeration: {last}")
+        raise BringUpError("claim", f"interface not claimable after re-enumeration: {last}")
 
     # ---- channel ----------------------------------------------------------
     async def set_channel(self, channel: int, scan: bool = False, *, _fastcc: bool = False) -> bool:

@@ -47,7 +47,7 @@ class RTL8922AUDriver(Driver):
     # ships non-DFS only, and a DFS hop hears nothing without a CAC dwell. TODO: 6 GHz (8922a
     # support_bands includes it). [SRC] rtw8922a.c:3210.
     SUPPORTED_CHANNELS = (
-        list(range(1, 14))
+        list(range(1, 15))
         + [36, 40, 44, 48, 149, 153, 157, 161, 165]
     )
 
@@ -147,7 +147,7 @@ class RTL8922AUDriver(Driver):
         await self._p(progress_cb, 0.10, "Reading chip version")
         ver = mac.read_chip_ver(self.transport)
         self.transport.cv = ver["cv"]
-        logger.info("RTL8922AU: cv=0x%x acv=0x%x cid=0x%x aid=0x%x",
+        logger.debug("RTL8922AU: cv=0x%x acv=0x%x cid=0x%x aid=0x%x",
                     ver["cv"], ver["acv"], ver["cid"], ver["aid"])
         await self._p(progress_cb, 0.15, "MAC power-on")
         mac.mac_pwr_on(self.transport, ver["cv"])
@@ -226,7 +226,7 @@ class RTL8922AUDriver(Driver):
             logger.warning("RTL8922AU: no bulk-IN endpoint; RX disabled")
             return
         self._rx_reader = RxReaderThread(
-            asyncio.get_event_loop(), self._rx_read_once, self._rx_dispatch,
+            asyncio.get_running_loop(), self._rx_read_once, self._rx_dispatch,
             name="rtl8922au-rx",
             on_fatal=lambda e: self._disconnect_cb(e) if self._disconnect_cb else None,
         )

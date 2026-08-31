@@ -115,8 +115,8 @@ def set_channel_2g_20mhz(t: RTL8188EUSTransport, channel: int) -> None:
     issues one read (kernel uses `u32p_replace_bits` on a register read),
     one SIPI write.
     """
-    if not 1 <= channel <= 13:
-        raise ValueError(f"channel must be in 1..13 for 2.4 GHz; got {channel}")
+    if not 1 <= channel <= 14:
+        raise ValueError(f"channel must be in 1..14 for 2.4 GHz; got {channel}")
 
     # --- 20 MHz BW path (kernel 8188e.c:436-448) ---
     opmode = t.read8(REG_BW_OPMODE)
@@ -142,4 +142,4 @@ def set_channel_2g_20mhz(t: RTL8188EUSTransport, channel: int) -> None:
     val32 |= MODE_AG_BW_20MHZ_8723B
     write_rfreg(t, RF_A, RF6052_REG_MODE_AG, val32)
 
-    logger.info("tuned to channel %d @ 20 MHz", channel)
+    logger.debug("tuned to channel %d @ 20 MHz", channel)
