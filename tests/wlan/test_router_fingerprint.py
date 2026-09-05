@@ -135,6 +135,17 @@ def test_oui_vendor_rule_uses_canonical_vendor_name():
     assert avm is not None and avm.vendor == "AVM"
 
 
+def test_tplink_oui_weakly_identifies_router_type():
+    fp = AccessPoint(bssid="00:0a:eb:11:22:33").router_fingerprint
+    assert fp is not None
+    assert fp.vendor == "TP-Link"
+    assert round(fp.vendor_confidence, 2) == 0.30
+    assert fp.kind == "router"
+    assert round(fp.kind_confidence, 2) == 0.30
+    assert fp.model is None
+    assert fp.label == "Possible TP-Link router"
+
+
 def test_wps_manufacturer_uses_canonical_vendor_name():
     fp = AccessPoint(
         bssid="02:00:00:00:00:01",

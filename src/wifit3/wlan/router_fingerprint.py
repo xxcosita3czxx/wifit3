@@ -133,6 +133,14 @@ def router_oui_rule(ap: "AccessPoint") -> Iterable[RouterClaim]:
     )
 
 
+def tplink_router_rule(ap: "AccessPoint") -> Iterable[RouterClaim]:
+    vendor = _vendor_for(ap.bssid)
+    if vendor != "TP-Link":
+        return ()
+    evidence = RouterEvidence("oui.tplink", "vendor", vendor, 0.30)
+    return (RouterClaim("kind", "router", 0.30, (evidence,)),)
+
+
 def passive_wps_identity_rule(ap: "AccessPoint") -> Iterable[RouterClaim]:
     manufacturer = canonical_vendor(_text(getattr(ap, "wps_manufacturer", None)))
     if manufacturer is None:
@@ -177,6 +185,7 @@ def o2_smartbox_brand_rule(ap: "AccessPoint") -> Iterable[RouterClaim]:
 IDENTIFY_RULES: tuple[RouterRule, ...] = (
     oui_vendor_rule,
     router_oui_rule,
+    tplink_router_rule,
     passive_wps_identity_rule,
     o2_smartbox_brand_rule,
 )
