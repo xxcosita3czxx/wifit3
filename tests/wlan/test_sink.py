@@ -72,6 +72,21 @@ def test_channel_hint_used_only_when_beacon_lacks_channel():
     assert s.access_points[BSSID].channel == 11
 
 
+def test_wps_identity_fields_persist_on_ap():
+    s = WlanSink()
+    s.update(_beacon({
+        "wps": True,
+        "wps_manufacturer": "MikroTik",
+        "wps_model_name": "RouterBOARD",
+        "wps_device_name": "Office AP",
+    }), W0)
+    ap = s.access_points[BSSID]
+    assert ap.wps_manufacturer == "MikroTik"
+    assert ap.wps_model_name == "RouterBOARD"
+    assert ap.wps_device_name == "Office AP"
+    assert ap.router_fingerprint.vendor == "MikroTik"
+
+
 # ----- encryption / decloak / clients ----------------------------------------
 
 def test_encryption_keeps_strongest_evidence_not_latest():

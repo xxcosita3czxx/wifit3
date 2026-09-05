@@ -162,6 +162,10 @@ class WlanSink:
         wps_config_methods = pkt.wps_config_methods
         wps_device_password_id = pkt.wps_device_password_id
         wps_selected_registrar = pkt.wps_selected_registrar
+        wps_manufacturer = pkt.wps_manufacturer
+        wps_model_name = pkt.wps_model_name
+        wps_model_number = pkt.wps_model_number
+        wps_device_name = pkt.wps_device_name
 
         if bssid not in self.access_points:
             ap = AccessPoint(
@@ -184,6 +188,10 @@ class WlanSink:
                 wps_config_methods=wps_config_methods,
                 wps_device_password_id=wps_device_password_id,
                 wps_selected_registrar=wps_selected_registrar,
+                wps_manufacturer=wps_manufacturer,
+                wps_model_name=wps_model_name,
+                wps_model_number=wps_model_number,
+                wps_device_name=wps_device_name,
             )
             self.access_points[bssid] = ap
             self._record_ap_signal(ap, card_id, rssi)
@@ -225,6 +233,10 @@ class WlanSink:
                 ap.wps_config_methods = wps_config_methods
                 ap.wps_device_password_id = wps_device_password_id
                 ap.wps_selected_registrar = wps_selected_registrar
+                ap.wps_manufacturer = wps_manufacturer or ap.wps_manufacturer
+                ap.wps_model_name = wps_model_name or ap.wps_model_name
+                ap.wps_model_number = wps_model_number or ap.wps_model_number
+                ap.wps_device_name = wps_device_name or ap.wps_device_name
 
         ap = self.access_points[bssid]
         ap.last_seen = time.time()
