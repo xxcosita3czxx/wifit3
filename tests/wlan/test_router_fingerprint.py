@@ -29,10 +29,11 @@ def test_passive_wps_manufacturer_and_model_make_stronger_router_fingerprint():
     assert fp is not None
     assert fp.vendor == "MikroTik"
     assert fp.model == "hAP ac²"
-    assert fp.vendor_confidence == 0.80
-    assert fp.model_confidence == 0.88
-    assert fp.confidence == fp.model_confidence
-    assert fp.label == "Likely MikroTik hAP ac² router"
+    assert fp.vendor_confidence == 0.99
+    assert fp.model_confidence == 0.99
+    assert fp.kind_confidence == 0.99
+    assert fp.confidence == 0.99
+    assert fp.label == "MikroTik hAP ac² router"
     assert {e.name for e in fp.evidence} >= {"manufacturer", "model", "device_name"}
 
 

@@ -225,16 +225,16 @@ def test_router_identity_markup_prefers_confident_model():
         wps_model_name="hAP ac²",
     )
     assert "hAP ac²" in fm.router_identity_markup(ap)
-    assert "88%" in fm.router_identity_markup(ap)
+    assert "99%" in fm.router_identity_markup(ap)
 
 
 def test_router_identity_tooltip_shows_per_field_confidence():
     ap = AccessPoint(bssid="02:00:00:00:00:01", wps_manufacturer="MikroTik")
     tip = fm.router_identity_tooltip(ap)
     assert tip is not None
-    assert "Vendor: MikroTik (80%)" in tip
-    assert "Kind: router (65%)" in tip
-    assert "wps.passive: manufacturer=MikroTik (80%)" in tip
+    assert "Vendor: MikroTik (99%)" in tip
+    assert "Kind: router (99%)" in tip
+    assert "wps.passive: manufacturer=MikroTik (99%)" in tip
 
 
 def test_router_identity_markup_is_blank_without_evidence():

@@ -64,7 +64,7 @@ def _vendor_for(mac: str) -> str | None:
                  if hex_mac[:n] in VENDOR_BY_OUI), None)
 
 
-def _combine(confidences: Iterable[float], cap: float = 0.98) -> float:
+def _combine(confidences: Iterable[float], cap: float = 0.99) -> float:
     miss = 1.0
     for confidence in confidences:
         miss *= 1.0 - max(0.0, min(confidence, 1.0))
@@ -118,15 +118,15 @@ def passive_wps_identity_rule(ap: "AccessPoint") -> Iterable[RouterClaim]:
     device_name = _text(getattr(ap, "wps_device_name", None))
 
     if manufacturer is not None:
-        evidence = RouterEvidence("wps.passive", "manufacturer", manufacturer, 0.80)
-        claims.append(RouterClaim("vendor", manufacturer, 0.80, (evidence,)))
-        claims.append(RouterClaim("kind", "router", 0.65, (evidence,)))
+        evidence = RouterEvidence("wps.passive", "manufacturer", manufacturer, 0.99)
+        claims.append(RouterClaim("vendor", manufacturer, 0.99, (evidence,)))
+        claims.append(RouterClaim("kind", "router", 0.99, (evidence,)))
     if model is not None:
-        evidence = RouterEvidence("wps.passive", "model", model, 0.88)
-        claims.append(RouterClaim("model", model, 0.88, (evidence,)))
+        evidence = RouterEvidence("wps.passive", "model", model, 0.99)
+        claims.append(RouterClaim("model", model, 0.99, (evidence,)))
     if device_name is not None:
-        evidence = RouterEvidence("wps.passive", "device_name", device_name, 0.60)
-        claims.append(RouterClaim("device_name", device_name, 0.60, (evidence,)))
+        evidence = RouterEvidence("wps.passive", "device_name", device_name, 0.99)
+        claims.append(RouterClaim("device_name", device_name, 0.99, (evidence,)))
     return claims
 
 

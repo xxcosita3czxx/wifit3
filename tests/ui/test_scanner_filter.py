@@ -125,8 +125,8 @@ def test_scanner_router_fingerprint_cells_show_confidence():
     )
     vendor = scanner._router_vendor_cell(ap)
     model = scanner._router_model_cell(ap)
-    assert vendor.plain == "MikroTik 80%"
-    assert model.plain == "hAP ac² 88%"
+    assert vendor.plain == "MikroTik 99%"
+    assert model.plain == "hAP ac² 99%"
 
 
 def test_ssid_chips_zero_one_two(monkeypatch):
