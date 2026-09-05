@@ -65,11 +65,12 @@ async def _harvest_m1(transport: WlanTransport, bssid: bytes, our_mac: bytes,
     return None
 
 
-async def probe_wps_m1(array, ap: AccessPoint) -> WpsM1ProbeResult:
+async def probe_wps_m1(array, ap: AccessPoint, iface=None) -> WpsM1ProbeResult:
     bssid = ap.bssid.lower()
     bssid_bytes = str_to_mac(bssid)
     try:
-        lease = array.lease(channel=ap.channel, fake_mac=SPOOFABLE, bssid=bssid_bytes, ack_tally=True)
+        lease = array.lease(channel=ap.channel, fake_mac=SPOOFABLE, bssid=bssid_bytes,
+                            ack_tally=True, iface=iface)
     except Exception as exc:
         return WpsM1ProbeResult(False, detail=str(exc))
 

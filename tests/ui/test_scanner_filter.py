@@ -12,23 +12,45 @@ from wifit3.ui.screens.filter import EncryptionFilter, ScanFilter
 from wifit3.ui.screens.scanner import ScannerView
 
 
-class _FakeArray:
-    members = []
+class _FakeIface:
+    def __init__(self, supported):
+        self.supported_channels = supported
+        self.current_channel = supported[0] if supported else 1
+        self.chipset = "test"
+        self._is_hopping = True
+        self.stop_calls = 0
+        self.start_calls = 0
 
+    async def stop_hopping(self):
+        self.stop_calls += 1
+        self._is_hopping = False
+
+    async def start_hopping(self, channels=None, interval=0.25):
+        self.start_calls += 1
+        self._is_hopping = True
+
+
+class _FakeArray:
     def __init__(self, aps, supported):
         self.access_points = {ap.bssid: ap for ap in aps}
         self.clients = {}
         self.forged_macs = set()
         self.supported_channels = supported
+        self.members = [_FakeIface(supported)] if supported else []
+        self.stop_calls = 0
+        self.start_calls = 0
 
     def get_access_points(self, include_eviltwin=True):
         return list(self.access_points.values())
 
+    def select_iface(self, channel):
+        return next((iface for iface in self.members if channel in iface.supported_channels), None)
+
     async def start_hopping(self, channels=None, interval=0.25):
-        pass
+        self.start_calls += 1
 
     async def stop_hopping(self):
-        pass
+        self.stop_calls += 1
 
 
 @pytest.mark.asyncio
@@ -154,8 +176,9 @@ async def test_scanner_wps_m1_probe_updates_ap_identity(monkeypatch):
         WpsM1Identity(manufacturer="TP-Link", model_name="Archer AX10", device_name="Office"),
     )
 
-    async def fake_probe(array, target):
+    async def fake_probe(array, target, iface=None):
         assert target is ap
+        assert iface is not None
         return result
 
     import wifit3.ui.screens.scanner as scanner_module
@@ -164,6 +187,7 @@ async def test_scanner_wps_m1_probe_updates_ap_identity(monkeypatch):
     app = WifiteApp()
     async with app.run_test() as pilot:
         app.array = _FakeArray([ap], [1, 6, 11])
+        iface = app.array.members[0]
         app.push_screen("scanner")
         await pilot.pause(0)
         scanner = app.screen
@@ -171,8 +195,14 @@ async def test_scanner_wps_m1_probe_updates_ap_identity(monkeypatch):
         scanner.notify = lambda *args, **kwargs: None
 
         scanner.refresh_table()
+        array_stop_calls = app.array.stop_calls
+        array_start_calls = app.array.start_calls
         await scanner._probe_wps_m1(ap)
 
+    assert app.array.stop_calls == array_stop_calls
+    assert app.array.start_calls == array_start_calls
+    assert iface.stop_calls == 1
+    assert iface.start_calls == 1
     assert ap.wps_manufacturer == "TP-Link"
     assert ap.wps_model_name == "Archer AX10"
     assert ap.wps_device_name == "Office"

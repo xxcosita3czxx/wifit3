@@ -774,9 +774,16 @@ class ScannerView(Screen):
         label = escape(ap.ssid or ap.bssid)
         self._write_log(treelog.header(
             f"[bold]WPS M1 probe[/bold] on [cyan]{label}[/cyan] [dim](CH {ap.channel})[/dim]"))
+        iface = array.select_iface(ap.channel)
+        if iface is None:
+            self._write_log(treelog.leaf_fail(f"no interface can probe CH {ap.channel}"))
+            self._wps_m1_probing = False
+            return
+        was_hopping = bool(getattr(iface, "_is_hopping", False))
         try:
-            await array.stop_hopping()
-            result = await probe_wps_m1(array, ap)
+            if was_hopping:
+                await iface.stop_hopping()
+            result = await probe_wps_m1(array, ap, iface=iface)
             if result.ok:
                 self._apply_wps_m1_identity(ap, result.identity)
                 fields = self._format_wps_m1_identity(result.identity)
@@ -790,8 +797,8 @@ class ScannerView(Screen):
             self._write_log(treelog.leaf_fail(f"M1 probe error: {escape(str(exc))}"))
         finally:
             self._wps_m1_probing = False
-            if self.app.screen is self:
-                await array.start_hopping(channels=self._channel_filter, interval=0.25)
+            if was_hopping and self.app.screen is self:
+                await iface.start_hopping(channels=self._channel_filter, interval=0.25)
 
     @staticmethod
     def _apply_wps_m1_identity(ap: AccessPoint, identity: WpsM1Identity) -> None:
