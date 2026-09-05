@@ -57,6 +57,8 @@ _CANONICAL_VENDOR_PATTERNS = (
     (re.compile(r"\btp[-\s]?link\b", re.I), "TP-Link"),
     (re.compile(r"\bavm\b|audiovisuelles marketing", re.I), "AVM"),
     (re.compile(r"\bamv\b|amv audio", re.I), "AMV"),
+    (re.compile(r"\bkaon\b", re.I), "Kaon"),
+    (re.compile(r"\bmikrotik\b|routerboard", re.I), "MikroTik"),
 )
 
 

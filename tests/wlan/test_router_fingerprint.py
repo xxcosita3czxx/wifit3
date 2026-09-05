@@ -75,6 +75,8 @@ def test_vendor_names_are_canonicalized():
     assert canonical_vendor("TP-Link") == "TP-Link"
     assert canonical_vendor("AVM Audiovisuelles Marketing und Computersysteme") == "AVM"
     assert canonical_vendor("AMV Audio") == "AMV"
+    assert canonical_vendor("Kaon Group") == "Kaon"
+    assert canonical_vendor("Kaon") == "Kaon"
     assert canonical_vendor("Routerboard.com") == "MikroTik"
 
 
