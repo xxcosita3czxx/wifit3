@@ -1,6 +1,7 @@
 """Confidence-scored AP/router identity from weak OUI and stronger WPS evidence."""
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Callable, Iterable, TYPE_CHECKING
 
@@ -52,16 +53,34 @@ _VENDOR_ALIASES = {
     "thomson": "Thomson",
     "upvel": "Upvel",
 }
+_CANONICAL_VENDOR_PATTERNS = (
+    (re.compile(r"\btp[-\s]?link\b", re.I), "TP-Link"),
+    (re.compile(r"\bavm\b|audiovisuelles marketing", re.I), "AVM"),
+    (re.compile(r"\bamv\b|amv audio", re.I), "AMV"),
+)
 
 
 def _hex_mac(mac: str) -> str:
     return mac.replace(":", "").replace("-", "").upper()
 
 
+def canonical_vendor(name: str | None) -> str | None:
+    if name is None:
+        return None
+    cleaned = name.strip()
+    if not cleaned:
+        return None
+    for pattern, canonical in _CANONICAL_VENDOR_PATTERNS:
+        if pattern.search(cleaned):
+            return canonical
+    return cleaned
+
+
 def _vendor_for(mac: str) -> str | None:
     hex_mac = _hex_mac(mac)
-    return next((VENDOR_BY_OUI[hex_mac[:n]] for n in _PREFIX_LENGTHS
-                 if hex_mac[:n] in VENDOR_BY_OUI), None)
+    vendor = next((VENDOR_BY_OUI[hex_mac[:n]] for n in _PREFIX_LENGTHS
+                   if hex_mac[:n] in VENDOR_BY_OUI), None)
+    return canonical_vendor(vendor)
 
 
 def _combine(confidences: Iterable[float], cap: float = 0.99) -> float:
@@ -103,7 +122,7 @@ def router_oui_rule(ap: "AccessPoint") -> Iterable[RouterClaim]:
     vendor = OUI_VENDOR.get(_hex_mac(ap.bssid)[:6])
     if vendor is None:
         return ()
-    label = _VENDOR_ALIASES.get(vendor, vendor.title())
+    label = canonical_vendor(_VENDOR_ALIASES.get(vendor, vendor.title()))
     evidence = RouterEvidence("oui.router", "vendor", label, 0.45)
     return (
         RouterClaim("vendor", label, 0.45, (evidence,)),
@@ -113,7 +132,7 @@ def router_oui_rule(ap: "AccessPoint") -> Iterable[RouterClaim]:
 
 def passive_wps_identity_rule(ap: "AccessPoint") -> Iterable[RouterClaim]:
     claims: list[RouterClaim] = []
-    manufacturer = _text(getattr(ap, "wps_manufacturer", None))
+    manufacturer = canonical_vendor(_text(getattr(ap, "wps_manufacturer", None)))
     model = _text(getattr(ap, "wps_model_name", None)) or _text(getattr(ap, "wps_model_number", None))
     device_name = _text(getattr(ap, "wps_device_name", None))
 
@@ -150,8 +169,8 @@ def fingerprint_router(ap: "AccessPoint", rules: Iterable[RouterRule] = ROUTER_R
     vendor_value = vendor.value if vendor is not None else None
     model_value = model.value if model is not None else None
     if vendor_value is None and model is not None and model.vendor is not None:
-        vendor_value = model.vendor
-        claims += (RouterClaim("vendor", model.vendor, model.confidence, model.evidence),)
+        vendor_value = canonical_vendor(model.vendor)
+        claims += (RouterClaim("vendor", vendor_value, model.confidence, model.evidence),)
     kind_value = kind.value if kind is not None else "router"
     vendor_confidence = _confidence_for(claims, "vendor", vendor_value)
     model_confidence = _confidence_for(claims, "model", model_value)

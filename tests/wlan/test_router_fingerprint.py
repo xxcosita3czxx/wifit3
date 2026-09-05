@@ -2,6 +2,7 @@ from wifit3.models import AccessPoint
 from wifit3.wlan.router_fingerprint import (
     RouterClaim,
     RouterEvidence,
+    canonical_vendor,
     fingerprint_router,
     passive_wps_identity_rule,
 )
@@ -67,6 +68,31 @@ def test_low_confidence_model_claim_does_not_enter_headline_label():
     assert fp.model == "hAP ac²"
     assert fp.model_confidence == 0.40
     assert fp.label == "MikroTik router"
+
+
+def test_vendor_names_are_canonicalized():
+    assert canonical_vendor("Tp-Link Technologies") == "TP-Link"
+    assert canonical_vendor("TP-Link") == "TP-Link"
+    assert canonical_vendor("AVM Audiovisuelles Marketing und Computersysteme") == "AVM"
+    assert canonical_vendor("AMV Audio") == "AMV"
+    assert canonical_vendor("Routerboard.com") == "MikroTik"
+
+
+def test_oui_vendor_rule_uses_canonical_vendor_name():
+    tplink = AccessPoint(bssid="00:0a:eb:11:22:33").router_fingerprint
+    avm = AccessPoint(bssid="0c:72:74:11:22:33").router_fingerprint
+    assert tplink is not None and tplink.vendor == "TP-Link"
+    assert avm is not None and avm.vendor == "AVM"
+
+
+def test_wps_manufacturer_uses_canonical_vendor_name():
+    fp = AccessPoint(
+        bssid="02:00:00:00:00:01",
+        wps_manufacturer="Tp-Link Technologies",
+    ).router_fingerprint
+    assert fp is not None
+    assert fp.vendor == "TP-Link"
+    assert fp.label == "TP-Link router"
 
 
 def test_specific_model_claim_can_imply_vendor():
