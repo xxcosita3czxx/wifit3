@@ -220,7 +220,7 @@ def router_identity_markup(ap) -> str:
     fp = getattr(ap, "router_fingerprint", None)
     if fp is None:
         return ""
-    name = fp.model if fp.model and fp.model_confidence >= 0.75 else fp.vendor
+    name = fp.model if fp.model and fp.model_confidence >= 0.75 else fp.brand or fp.vendor
     if not name:
         return ""
     return f"[accent]{escape(name)}[/accent] [dim]{round(fp.confidence * 100)}%[/dim]"
@@ -231,11 +231,14 @@ def router_identity_tooltip(ap) -> str | None:
     if fp is None:
         return None
     rows = [fp.label]
+    if fp.brand:
+        rows.append(f"Brand: {fp.brand} ({round(fp.brand_confidence * 100)}%)")
     if fp.vendor:
         rows.append(f"Vendor: {fp.vendor} ({round(fp.vendor_confidence * 100)}%)")
     if fp.model:
         rows.append(f"Model: {fp.model} ({round(fp.model_confidence * 100)}%)")
-    rows.append(f"Kind: {fp.kind} ({round(fp.kind_confidence * 100)}%)")
+    if fp.kind:
+        rows.append(f"Type: {fp.kind} ({round(fp.kind_confidence * 100)}%)")
     rows += [f"{e.source}: {e.name}={e.value} ({round(e.confidence * 100)}%)" for e in fp.evidence]
     return "\n".join(rows)
 

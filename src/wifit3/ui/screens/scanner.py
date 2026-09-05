@@ -534,7 +534,7 @@ class ScannerView(Screen):
 
     def _router_kind_cell(self, ap: AccessPoint) -> Text:
         fp = ap.router_fingerprint
-        if fp is None or not fp.kind:
+        if fp is None or not fp.kind or fp.kind_confidence <= 0:
             return Text("", style=self._theme_fg)
         return Text(f"{fp.kind} {round(fp.kind_confidence * 100)}%", style=self._theme_fg)
 

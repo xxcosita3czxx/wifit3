@@ -35,9 +35,11 @@ class RouterFingerprint:
     confidence: float
     vendor: str | None = None
     vendor_confidence: float = 0.0
+    brand: str | None = None
+    brand_confidence: float = 0.0
     model: str | None = None
     model_confidence: float = 0.0
-    kind: str = "router"
+    kind: str | None = None
     kind_confidence: float = 0.0
     claims: tuple[RouterClaim, ...] = ()
     evidence: tuple[RouterEvidence, ...] = ()
@@ -58,7 +60,6 @@ _CANONICAL_VENDOR_PATTERNS = (
     (re.compile(r"\bavm\b|audiovisuelles marketing", re.I), "AVM"),
     (re.compile(r"\bamv\b|amv audio", re.I), "AMV"),
     (re.compile(r"\bkaon\b", re.I), "Kaon"),
-    (re.compile(r"\bmikrotik\b|routerboard", re.I), "MikroTik"),
 )
 
 
@@ -133,15 +134,20 @@ def router_oui_rule(ap: "AccessPoint") -> Iterable[RouterClaim]:
 
 
 def passive_wps_identity_rule(ap: "AccessPoint") -> Iterable[RouterClaim]:
-    claims: list[RouterClaim] = []
     manufacturer = canonical_vendor(_text(getattr(ap, "wps_manufacturer", None)))
+    if manufacturer is None:
+        return ()
+    evidence = RouterEvidence("wps.passive", "manufacturer", manufacturer, 0.99)
+    return (
+        RouterClaim("vendor", manufacturer, 0.99, (evidence,)),
+        RouterClaim("kind", "router", 0.99, (evidence,)),
+    )
+
+
+def passive_wps_model_rule(ap: "AccessPoint") -> Iterable[RouterClaim]:
+    claims: list[RouterClaim] = []
     model = _text(getattr(ap, "wps_model_name", None)) or _text(getattr(ap, "wps_model_number", None))
     device_name = _text(getattr(ap, "wps_device_name", None))
-
-    if manufacturer is not None:
-        evidence = RouterEvidence("wps.passive", "manufacturer", manufacturer, 0.99)
-        claims.append(RouterClaim("vendor", manufacturer, 0.99, (evidence,)))
-        claims.append(RouterClaim("kind", "router", 0.99, (evidence,)))
     if model is not None:
         evidence = RouterEvidence("wps.passive", "model", model, 0.99)
         claims.append(RouterClaim("model", model, 0.99, (evidence,)))
@@ -151,38 +157,78 @@ def passive_wps_identity_rule(ap: "AccessPoint") -> Iterable[RouterClaim]:
     return claims
 
 
-ROUTER_RULES: tuple[RouterRule, ...] = (
+def o2_smartbox_brand_rule(ap: "AccessPoint") -> Iterable[RouterClaim]:
+    values = (
+        _text(getattr(ap, "ssid", None)),
+        _text(getattr(ap, "wps_model_name", None)),
+        _text(getattr(ap, "wps_model_number", None)),
+        _text(getattr(ap, "wps_device_name", None)),
+    )
+    matched = next((value for value in values if value and "o2smartbox" in value.lower()), None)
+    if matched is None:
+        return ()
+    evidence = RouterEvidence("brand.o2_smartbox", "identity", matched, 0.95)
+    return (
+        RouterClaim("brand", "O2", 0.95, (evidence,)),
+        RouterClaim("kind", "router", 0.95, (evidence,)),
+    )
+
+
+IDENTIFY_RULES: tuple[RouterRule, ...] = (
     oui_vendor_rule,
     router_oui_rule,
     passive_wps_identity_rule,
+    o2_smartbox_brand_rule,
 )
+DISTINGUISH_RULES: tuple[RouterRule, ...] = (
+    passive_wps_model_rule,
+)
+ROUTER_RULES: tuple[RouterRule, ...] = IDENTIFY_RULES + DISTINGUISH_RULES
 
 
-def fingerprint_router(ap: "AccessPoint", rules: Iterable[RouterRule] = ROUTER_RULES) -> RouterFingerprint | None:
-    claims = tuple(claim for rule in rules for claim in rule(ap))
+def fingerprint_router(
+    ap: "AccessPoint",
+    rules: Iterable[RouterRule] | None = None,
+    identify_rules: Iterable[RouterRule] = IDENTIFY_RULES,
+    distinguish_rules: Iterable[RouterRule] = DISTINGUISH_RULES,
+) -> RouterFingerprint | None:
+    active_rules = tuple(rules) if rules is not None else tuple(identify_rules) + tuple(distinguish_rules)
+    claims = tuple(claim for rule in active_rules for claim in rule(ap))
     if not claims:
         return None
 
     evidence = tuple(item for claim in claims for item in claim.evidence)
     vendor = _best(claims, "vendor")
+    brand = _best(claims, "brand")
     model = _best(claims, "model")
     kind = _best(claims, "kind")
 
     vendor_value = vendor.value if vendor is not None else None
+    brand_value = brand.value if brand is not None else None
     model_value = model.value if model is not None else None
     if vendor_value is None and model is not None and model.vendor is not None:
         vendor_value = canonical_vendor(model.vendor)
         claims += (RouterClaim("vendor", vendor_value, model.confidence, model.evidence),)
-    kind_value = kind.value if kind is not None else "router"
+    kind_value = kind.value if kind is not None else None
     vendor_confidence = _confidence_for(claims, "vendor", vendor_value)
+    brand_confidence = _confidence_for(claims, "brand", brand_value)
     model_confidence = _confidence_for(claims, "model", model_value)
     kind_confidence = _confidence_for(claims, "kind", kind_value)
-    identity_confidence = max(vendor_confidence, model_confidence, kind_confidence)
+    show_model = model_value is not None and model_confidence >= 0.75
+    if show_model:
+        identity_confidence = model_confidence
+    elif brand_value is not None:
+        identity_confidence = brand_confidence
+    elif vendor_value is not None:
+        identity_confidence = vendor_confidence
+    else:
+        identity_confidence = kind_confidence
 
-    label_parts = [vendor_value]
-    if model_value is not None and model_confidence >= 0.75:
+    label_parts = [brand_value or vendor_value]
+    if show_model:
         label_parts.append(model_value)
-    label_parts.append(kind_value)
+    if kind_value:
+        label_parts.append(kind_value)
     label = " ".join(dict.fromkeys(part for part in label_parts if part))
     if identity_confidence < 0.75:
         label = f"Possible {label}"
@@ -194,6 +240,8 @@ def fingerprint_router(ap: "AccessPoint", rules: Iterable[RouterRule] = ROUTER_R
         confidence=identity_confidence,
         vendor=vendor_value,
         vendor_confidence=vendor_confidence,
+        brand=brand_value,
+        brand_confidence=brand_confidence,
         model=model_value,
         model_confidence=model_confidence,
         kind=kind_value,

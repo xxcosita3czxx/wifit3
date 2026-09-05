@@ -131,6 +131,14 @@ def test_scanner_router_fingerprint_cells_show_confidence():
     assert kind.plain == "router 99%"
 
 
+def test_scanner_router_type_cell_blank_without_type_confidence():
+    scanner = ScannerView()
+    scanner._theme_fg = "white"
+    ap = AccessPoint(bssid="00:00:0b:aa:bb:cc")
+    assert scanner._router_vendor_cell(ap).plain == "Matrix 30%"
+    assert scanner._router_kind_cell(ap).plain == ""
+
+
 def test_ssid_chips_zero_one_two(monkeypatch):
     ap = AccessPoint(bssid="aa:bb:cc:00:00:40", ssid="Net", channel=1)
 

@@ -4,7 +4,7 @@ from wifit3.wlan.router_fingerprint import (
     RouterEvidence,
     canonical_vendor,
     fingerprint_router,
-    passive_wps_identity_rule,
+    passive_wps_model_rule,
 )
 
 
@@ -15,8 +15,10 @@ def test_oui_only_is_possible_vendor_not_exact_router():
     assert fp.model is None
     assert fp.vendor_confidence <= 0.45
     assert fp.model_confidence == 0.0
+    assert fp.kind is None
+    assert fp.kind_confidence == 0.0
     assert fp.confidence == fp.vendor_confidence
-    assert fp.label == "Possible Matrix router"
+    assert fp.label == "Possible Matrix"
 
 
 def test_passive_wps_manufacturer_and_model_make_stronger_router_fingerprint():
@@ -41,7 +43,10 @@ def test_passive_wps_manufacturer_and_model_make_stronger_router_fingerprint():
 def test_rules_are_pluggable_for_router_specific_checks():
     def mikrotik_tool_rule(ap):
         evidence = RouterEvidence("mikrotik.winbox", "mac_server", "reachable", 0.92)
-        return (RouterClaim("vendor", "MikroTik", 0.92, (evidence,)),)
+        return (
+            RouterClaim("vendor", "MikroTik", 0.92, (evidence,)),
+            RouterClaim("kind", "router", 0.92, (evidence,)),
+        )
 
     ap = AccessPoint(bssid="02:00:00:00:00:01")
     fp = fingerprint_router(ap, rules=(mikrotik_tool_rule,))
@@ -52,6 +57,49 @@ def test_rules_are_pluggable_for_router_specific_checks():
     assert fp.confidence == 0.92
     assert fp.label == "MikroTik router"
     assert fp.evidence[0].source == "mikrotik.winbox"
+
+
+def test_o2_smartbox_pattern_sets_brand_without_replacing_vendor():
+    ap = AccessPoint(
+        bssid="02:00:00:00:00:01",
+        wps_manufacturer="Kaon Group",
+        wps_device_name="O2SMARTBOX",
+    )
+    fp = ap.router_fingerprint
+    assert fp is not None
+    assert fp.brand == "O2"
+    assert fp.brand_confidence == 0.95
+    assert fp.vendor == "Kaon"
+    assert fp.vendor_confidence == 0.99
+    assert fp.label == "O2 router"
+
+
+def test_o2_smartbox_ssid_pattern_sets_brand():
+    fp = AccessPoint(bssid="02:00:00:00:00:01", ssid="O2SMARTBOX-123456").router_fingerprint
+    assert fp is not None
+    assert fp.brand == "O2"
+    assert fp.vendor is None
+    assert fp.label == "O2 router"
+
+
+def test_brand_and_hardware_vendor_are_separate_claims():
+    def isp_brand_rule(ap):
+        brand_ev = RouterEvidence("ssid.pattern", "brand", "O2", 0.82)
+        vendor_ev = RouterEvidence("oui.vendor", "vendor", "Kaon", 0.99)
+        return (
+            RouterClaim("brand", "O2", 0.82, (brand_ev,)),
+            RouterClaim("vendor", "Kaon", 0.99, (vendor_ev,)),
+            RouterClaim("kind", "router", 0.99, (vendor_ev,)),
+        )
+
+    fp = fingerprint_router(AccessPoint(bssid="02:00:00:00:00:01"), rules=(isp_brand_rule,))
+    assert fp is not None
+    assert fp.brand == "O2"
+    assert fp.brand_confidence == 0.82
+    assert fp.vendor == "Kaon"
+    assert fp.vendor_confidence == 0.99
+    assert fp.confidence == 0.82
+    assert fp.label == "Likely O2 router"
 
 
 def test_low_confidence_model_claim_does_not_enter_headline_label():
@@ -67,7 +115,8 @@ def test_low_confidence_model_claim_does_not_enter_headline_label():
     assert fp.vendor_confidence == 0.92
     assert fp.model == "hAP ac²"
     assert fp.model_confidence == 0.40
-    assert fp.label == "MikroTik router"
+    assert fp.kind is None
+    assert fp.label == "MikroTik"
 
 
 def test_vendor_names_are_canonicalized():
@@ -77,7 +126,6 @@ def test_vendor_names_are_canonicalized():
     assert canonical_vendor("AMV Audio") == "AMV"
     assert canonical_vendor("Kaon Group") == "Kaon"
     assert canonical_vendor("Kaon") == "Kaon"
-    assert canonical_vendor("Routerboard.com") == "MikroTik"
 
 
 def test_oui_vendor_rule_uses_canonical_vendor_name():
@@ -108,11 +156,25 @@ def test_specific_model_claim_can_imply_vendor():
     assert fp.vendor_confidence == 0.97
     assert fp.model == "CCR2004"
     assert fp.model_confidence == 0.97
-    assert fp.label == "MikroTik CCR2004 router"
+    assert fp.kind is None
+    assert fp.label == "MikroTik CCR2004"
+
+
+def test_identify_and_distinguish_rules_can_run_separately():
+    ap = AccessPoint(
+        bssid="02:00:00:00:00:01",
+        wps_manufacturer="MikroTik",
+        wps_model_name="hAP ac²",
+    )
+    identify_only = fingerprint_router(ap, distinguish_rules=())
+    full = fingerprint_router(ap)
+    assert identify_only is not None and identify_only.vendor == "MikroTik"
+    assert identify_only.model is None
+    assert full is not None and full.model == "hAP ac²"
 
 
 def test_wps_model_number_is_model_fallback():
     ap = AccessPoint(bssid="02:00:00:00:00:01", wps_manufacturer="Acme", wps_model_number="R9000")
-    claims = list(passive_wps_identity_rule(ap))
+    claims = list(passive_wps_model_rule(ap))
     model_claim = next(claim for claim in claims if claim.name == "model")
     assert model_claim.value == "R9000"

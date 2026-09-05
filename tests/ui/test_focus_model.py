@@ -233,8 +233,30 @@ def test_router_identity_tooltip_shows_per_field_confidence():
     tip = fm.router_identity_tooltip(ap)
     assert tip is not None
     assert "Vendor: MikroTik (99%)" in tip
-    assert "Kind: router (99%)" in tip
+    assert "Type: router (99%)" in tip
     assert "wps.passive: manufacturer=MikroTik (99%)" in tip
+
+
+def test_router_identity_tooltip_can_show_brand_and_vendor_separately():
+    class _AP:
+        @property
+        def router_fingerprint(self):
+            from wifit3.wlan.router_fingerprint import RouterFingerprint
+            return RouterFingerprint(
+                label="Likely O2 router",
+                confidence=0.82,
+                brand="O2",
+                brand_confidence=0.82,
+                vendor="Kaon",
+                vendor_confidence=0.99,
+                kind="router",
+                kind_confidence=0.99,
+            )
+
+    assert "O2" in fm.router_identity_markup(_AP())
+    tip = fm.router_identity_tooltip(_AP())
+    assert "Brand: O2 (82%)" in tip
+    assert "Vendor: Kaon (99%)" in tip
 
 
 def test_router_identity_markup_is_blank_without_evidence():
