@@ -107,6 +107,28 @@ async def test_channel_modal_returns_focus_to_table():
         assert app.focused is table
 
 
+def test_scanner_has_sortable_vendor_and_model_columns():
+    columns = [key for key, _label in ScannerView._COLUMNS]
+    assert "vendor" in columns
+    assert "model" in columns
+
+
+def test_scanner_router_fingerprint_cells_show_confidence():
+    scanner = ScannerView()
+    scanner._theme_fg = "white"
+    ap = AccessPoint(
+        bssid="02:00:00:00:00:01",
+        ssid="Lab",
+        channel=1,
+        wps_manufacturer="MikroTik",
+        wps_model_name="hAP ac²",
+    )
+    vendor = scanner._router_vendor_cell(ap)
+    model = scanner._router_model_cell(ap)
+    assert vendor.plain == "MikroTik 80%"
+    assert model.plain == "hAP ac² 88%"
+
+
 def test_ssid_chips_zero_one_two(monkeypatch):
     ap = AccessPoint(bssid="aa:bb:cc:00:00:40", ssid="Net", channel=1)
 

@@ -68,6 +68,20 @@ def test_low_confidence_model_claim_does_not_enter_headline_label():
     assert fp.label == "MikroTik router"
 
 
+def test_specific_model_claim_can_imply_vendor():
+    def known_model_rule(ap):
+        evidence = RouterEvidence("rule.known_model", "model", "CCR2004", 0.97)
+        return (RouterClaim("model", "CCR2004", 0.97, (evidence,), vendor="MikroTik"),)
+
+    fp = fingerprint_router(AccessPoint(bssid="02:00:00:00:00:01"), rules=(known_model_rule,))
+    assert fp is not None
+    assert fp.vendor == "MikroTik"
+    assert fp.vendor_confidence == 0.97
+    assert fp.model == "CCR2004"
+    assert fp.model_confidence == 0.97
+    assert fp.label == "MikroTik CCR2004 router"
+
+
 def test_wps_model_number_is_model_fallback():
     ap = AccessPoint(bssid="02:00:00:00:00:01", wps_manufacturer="Acme", wps_model_number="R9000")
     claims = list(passive_wps_identity_rule(ap))

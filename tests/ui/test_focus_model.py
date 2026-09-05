@@ -9,7 +9,7 @@ import pytest
 
 from wifit3.campaigns.campaign import Campaign
 from wifit3.crack.wep import CRACK_READY_THRESHOLD
-from wifit3.models import Handshake
+from wifit3.models import AccessPoint, Handshake
 from wifit3.ui import focus_model as fm
 from wifit3.persist.config import Config
 
@@ -216,6 +216,30 @@ def test_status_footer_combines_pmf_and_wps():
     lines = fm.status_footer_lines(_rsn_ap(wps=True, wps_version="1.0"), None, None, 0)
     assert len(lines) == 2
     assert "PMF:" in lines[1] and "WPS:" in lines[1] and "1.0" in lines[1]
+
+
+def test_router_identity_markup_prefers_confident_model():
+    ap = AccessPoint(
+        bssid="02:00:00:00:00:01",
+        wps_manufacturer="MikroTik",
+        wps_model_name="hAP ac²",
+    )
+    assert "hAP ac²" in fm.router_identity_markup(ap)
+    assert "88%" in fm.router_identity_markup(ap)
+
+
+def test_router_identity_tooltip_shows_per_field_confidence():
+    ap = AccessPoint(bssid="02:00:00:00:00:01", wps_manufacturer="MikroTik")
+    tip = fm.router_identity_tooltip(ap)
+    assert tip is not None
+    assert "Vendor: MikroTik (80%)" in tip
+    assert "Kind: router (65%)" in tip
+    assert "wps.passive: manufacturer=MikroTik (80%)" in tip
+
+
+def test_router_identity_markup_is_blank_without_evidence():
+    assert fm.router_identity_markup(AccessPoint(bssid="02:00:00:00:00:01")) == ""
+    assert fm.router_identity_tooltip(AccessPoint(bssid="02:00:00:00:00:01")) is None
 
 
 def test_status_footer_open_is_encryption_only():

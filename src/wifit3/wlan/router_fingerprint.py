@@ -25,6 +25,7 @@ class RouterClaim:
     value: str
     confidence: float
     evidence: tuple[RouterEvidence, ...]
+    vendor: str | None = None
 
 
 @dataclass(frozen=True)
@@ -148,6 +149,9 @@ def fingerprint_router(ap: "AccessPoint", rules: Iterable[RouterRule] = ROUTER_R
 
     vendor_value = vendor.value if vendor is not None else None
     model_value = model.value if model is not None else None
+    if vendor_value is None and model is not None and model.vendor is not None:
+        vendor_value = model.vendor
+        claims += (RouterClaim("vendor", model.vendor, model.confidence, model.evidence),)
     kind_value = kind.value if kind is not None else "router"
     vendor_confidence = _confidence_for(claims, "vendor", vendor_value)
     model_confidence = _confidence_for(claims, "model", model_value)

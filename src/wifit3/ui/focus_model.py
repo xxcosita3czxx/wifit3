@@ -216,6 +216,30 @@ def pmf_status_markup(ap) -> str:
     return "[dim]Disabled[/dim]"
 
 
+def router_identity_markup(ap) -> str:
+    fp = getattr(ap, "router_fingerprint", None)
+    if fp is None:
+        return ""
+    name = fp.model if fp.model and fp.model_confidence >= 0.75 else fp.vendor
+    if not name:
+        return ""
+    return f"[accent]{escape(name[:10])}[/accent] [dim]{round(fp.confidence * 100)}%[/dim]"
+
+
+def router_identity_tooltip(ap) -> str | None:
+    fp = getattr(ap, "router_fingerprint", None)
+    if fp is None:
+        return None
+    rows = [fp.label]
+    if fp.vendor:
+        rows.append(f"Vendor: {fp.vendor} ({round(fp.vendor_confidence * 100)}%)")
+    if fp.model:
+        rows.append(f"Model: {fp.model} ({round(fp.model_confidence * 100)}%)")
+    rows.append(f"Kind: {fp.kind} ({round(fp.kind_confidence * 100)}%)")
+    rows += [f"{e.source}: {e.name}={e.value} ({round(e.confidence * 100)}%)" for e in fp.evidence]
+    return "\n".join(rows)
+
+
 def status_footer_lines(ap, array, campaign, now: float) -> list[str]:
     """The dashboard footer lines for this target."""
     if is_wep(ap):

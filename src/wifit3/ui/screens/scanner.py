@@ -230,6 +230,8 @@ class ScannerView(Screen):
         ("clients", "💻"),
         ("encryption", "ENCRYPT"),
         ("wps", "WPS"),
+        ("vendor", "VENDOR"),
+        ("model", "MODEL"),
         ("ssid", "SSID"),
     ]
 
@@ -519,8 +521,22 @@ class ScannerView(Screen):
             # style=fg gives the bare '→' between WPA3/WPA2 a fadeable base color.
             Text.from_markup(format_encryption_markup(ap, muted=fg), emoji=False, style=fg),
             wps_cell,
+            self._router_vendor_cell(ap),
+            self._router_model_cell(ap),
             self._ssid_cell(ap),
         ]
+
+    def _router_vendor_cell(self, ap: AccessPoint) -> Text:
+        fp = ap.router_fingerprint
+        if fp is None or not fp.vendor:
+            return Text("", style=self._theme_fg)
+        return Text(f"{fp.vendor} {round(fp.vendor_confidence * 100)}%", style=self._theme_fg)
+
+    def _router_model_cell(self, ap: AccessPoint) -> Text:
+        fp = ap.router_fingerprint
+        if fp is None or not fp.model:
+            return Text("", style=self._theme_fg)
+        return Text(f"{fp.model} {round(fp.model_confidence * 100)}%", style=self._theme_fg)
 
     # Cap the SSID+badges cell so the trailing capture badges never overflow.
     _SSID_CELL_MAX = 32
