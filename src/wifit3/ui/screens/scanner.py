@@ -17,7 +17,8 @@ from rich.text import Span, Text
 
 from wifit3.campaigns import treelog
 from wifit3.campaigns.pbc import PbcWatcher, WpsPbcCapture
-from wifit3.campaigns.wps.m1_probe import WpsM1Identity, probe_wps_m1
+from wifit3.campaigns.router_probe import probe_router_info
+from wifit3.campaigns.wps.m1_probe import WpsM1Identity
 from wifit3.campaigns.wps.registrar import PinResult
 from wifit3.persist.capture_history import load_capture_index, summarize
 from wifit3.persist.config import Config
@@ -218,7 +219,7 @@ class ScannerView(Screen):
         Binding("f", "focus_filter", "Filter", show=True),
         Binding("l", "toggle_log", "Toggle Log", show=True),
         Binding("w", "wps_pbc_mode", "WPS PBC", show=True),
-        Binding("p", "probe_wps_m1", "Probe WPS M1", show=True),
+        Binding("p", "probe_router_info", "Probe Info", show=True),
         Binding("home", "scroll_home", "Top", show=False, priority=True),
         Binding("end", "scroll_end", "Bottom", show=False, priority=True),
     ]
@@ -268,7 +269,7 @@ class ScannerView(Screen):
         # (app.pbc_enabled). Watcher + capturing serialization stay Scanner-local.
         self._pbc_watcher = PbcWatcher()
         self._pbc_capturing = False          # serialize: one invade at a time
-        self._wps_m1_probing = False
+        self._router_info_probing = False
 
     # ----- Compose / mount ---------------------------------------------------
 
@@ -755,53 +756,52 @@ class ScannerView(Screen):
             return None
         return self.ap_cache.get(row_key)
 
-    def action_probe_wps_m1(self) -> None:
+    def action_probe_router_info(self) -> None:
         ap = self._selected_ap()
         if ap is None:
-            self._write_log(treelog.leaf_fail("select an AP before probing WPS M1"))
+            self._write_log(treelog.leaf_fail("select an AP before probing identity"))
             return
         if not self.app.array:
             self._write_log(treelog.leaf_fail("no active interface"))
             return
-        if self._wps_m1_probing or self._pbc_capturing:
-            self._write_log(treelog.leaf_fail("another WPS action is already running"))
+        if self._router_info_probing or self._pbc_capturing:
+            self._write_log(treelog.leaf_fail("another probe is already running"))
             return
-        if not ap.wps:
-            self._write_log(treelog.leaf_fail(f"{escape(ap.ssid or ap.bssid)} does not advertise WPS"))
-            return
-        asyncio.create_task(self._probe_wps_m1(ap))
+        asyncio.create_task(self._probe_router_info(ap))
 
-    async def _probe_wps_m1(self, ap: AccessPoint) -> None:
+    async def _probe_router_info(self, ap: AccessPoint) -> None:
         array = self.app.array
         if not array:
             return
-        self._wps_m1_probing = True
+        self._router_info_probing = True
         label = escape(ap.ssid or ap.bssid)
         self._write_log(treelog.header(
-            f"[bold]WPS M1 probe[/bold] on [cyan]{label}[/cyan] [dim](CH {ap.channel})[/dim]"))
+            f"[bold]Identity probe[/bold] on [cyan]{label}[/cyan] [dim](CH {ap.channel})[/dim]"))
         iface = array.select_iface(ap.channel)
         if iface is None:
             self._write_log(treelog.leaf_fail(f"no interface can probe CH {ap.channel}"))
-            self._wps_m1_probing = False
+            self._router_info_probing = False
             return
         was_hopping = bool(getattr(iface, "_is_hopping", False))
         try:
             if was_hopping:
                 await iface.stop_hopping()
-            result = await probe_wps_m1(array, ap, iface=iface)
+            result = await probe_router_info(array, ap, iface=iface)
             if result.ok:
-                self._apply_wps_m1_identity(ap, result.identity)
-                fields = self._format_wps_m1_identity(result.identity)
-                self._write_log(treelog.leaf_ok(fields or "M1 received"))
-                self.notify(f"{ap.ssid or ap.bssid}: {fields or 'M1 received'}", title="WPS M1", timeout=6)
+                if result.wps_identity is not None:
+                    self._apply_wps_m1_identity(ap, result.wps_identity)
+                fields = self._format_probe_result(result)
+                self._write_log(treelog.leaf_ok(fields or "identity probe matched"))
+                self.notify(f"{ap.ssid or ap.bssid}: {fields or 'identity probe matched'}",
+                            title="Identity probe", timeout=6)
                 self.refresh_table()
             else:
                 self._write_log(treelog.leaf_fail(
-                    f"M1 probe failed [dim]({escape(result.detail or 'no detail')})[/dim]"))
+                    f"identity probe failed [dim]({escape(result.detail or 'no detail')})[/dim]"))
         except Exception as exc:
-            self._write_log(treelog.leaf_fail(f"M1 probe error: {escape(str(exc))}"))
+            self._write_log(treelog.leaf_fail(f"identity probe error: {escape(str(exc))}"))
         finally:
-            self._wps_m1_probing = False
+            self._router_info_probing = False
             if was_hopping and self.app.screen is self:
                 await iface.start_hopping(channels=self._channel_filter, interval=0.25)
 
@@ -812,6 +812,13 @@ class ScannerView(Screen):
         ap.wps_model_name = identity.model_name or ap.wps_model_name
         ap.wps_model_number = identity.model_number or ap.wps_model_number
         ap.wps_device_name = identity.device_name or ap.wps_device_name
+
+    @staticmethod
+    def _format_probe_result(result) -> str:
+        if result.wps_identity is not None:
+            fields = ScannerView._format_wps_m1_identity(result.wps_identity)
+            return f"WPS M1: {fields}" if fields else "WPS M1 received"
+        return result.source or "identity probe matched"
 
     @staticmethod
     def _format_wps_m1_identity(identity: WpsM1Identity) -> str:

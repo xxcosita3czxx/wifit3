@@ -4,7 +4,8 @@ it straight back without having to rediscover it."""
 import pytest
 from textual.widgets import Button, DataTable
 
-from wifit3.campaigns.wps.m1_probe import WpsM1Identity, WpsM1ProbeResult
+from wifit3.campaigns.router_probe import RouterProbeResult
+from wifit3.campaigns.wps.m1_probe import WpsM1Identity
 from wifit3.models import AccessPoint, PersistedCapture
 from wifit3.persist.config import Config
 from wifit3.ui.app import WifiteApp
@@ -141,8 +142,8 @@ def test_scanner_has_sortable_brand_and_type_columns_after_ssid():
     assert columns.index("ssid") < columns.index("brand") < columns.index("kind")
 
 
-def test_scanner_has_wps_m1_probe_keybind():
-    assert any(binding.key == "p" and binding.action == "probe_wps_m1"
+def test_scanner_has_router_info_probe_keybind():
+    assert any(binding.key == "p" and binding.action == "probe_router_info"
                for binding in ScannerView.BINDINGS)
 
 
@@ -202,11 +203,12 @@ def test_scanner_brand_cell_shows_vodafone_over_celeno_manufacturer():
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("no_usb_devices")
-async def test_scanner_wps_m1_probe_updates_ap_identity(monkeypatch):
+async def test_scanner_info_probe_updates_ap_identity(monkeypatch):
     ap = AccessPoint(bssid="aa:bb:cc:00:00:50", ssid="Router", channel=1, wps=True)
-    result = WpsM1ProbeResult(
+    result = RouterProbeResult(
         True,
-        WpsM1Identity(manufacturer="TP-Link", model_name="Archer AX10", device_name="Office"),
+        source="wps.m1",
+        wps_identity=WpsM1Identity(manufacturer="TP-Link", model_name="Archer AX10", device_name="Office"),
     )
 
     async def fake_probe(array, target, iface=None):
@@ -216,7 +218,7 @@ async def test_scanner_wps_m1_probe_updates_ap_identity(monkeypatch):
 
     import wifit3.ui.screens.scanner as scanner_module
 
-    monkeypatch.setattr(scanner_module, "probe_wps_m1", fake_probe)
+    monkeypatch.setattr(scanner_module, "probe_router_info", fake_probe)
     app = WifiteApp()
     async with app.run_test() as pilot:
         app.array = _FakeArray([ap], [1, 6, 11])
@@ -230,7 +232,7 @@ async def test_scanner_wps_m1_probe_updates_ap_identity(monkeypatch):
         scanner.refresh_table()
         array_stop_calls = app.array.stop_calls
         array_start_calls = app.array.start_calls
-        await scanner._probe_wps_m1(ap)
+        await scanner._probe_router_info(ap)
 
     assert app.array.stop_calls == array_stop_calls
     assert app.array.start_calls == array_start_calls
