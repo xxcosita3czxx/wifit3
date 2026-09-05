@@ -4,6 +4,7 @@ it straight back without having to rediscover it."""
 import pytest
 from textual.widgets import Button, DataTable
 
+from wifit3.campaigns.wps.m1_probe import WpsM1Identity, WpsM1ProbeResult
 from wifit3.models import AccessPoint, PersistedCapture
 from wifit3.persist.config import Config
 from wifit3.ui.app import WifiteApp
@@ -115,6 +116,11 @@ def test_scanner_has_sortable_vendor_and_type_columns_after_ssid():
     assert columns.index("ssid") < columns.index("vendor") < columns.index("kind")
 
 
+def test_scanner_has_wps_m1_probe_keybind():
+    assert any(binding.key == "p" and binding.action == "probe_wps_m1"
+               for binding in ScannerView.BINDINGS)
+
+
 def test_scanner_router_fingerprint_cells_show_confidence():
     scanner = ScannerView()
     scanner._theme_fg = "white"
@@ -137,6 +143,44 @@ def test_scanner_router_type_cell_blank_without_type_confidence():
     ap = AccessPoint(bssid="00:00:0b:aa:bb:cc")
     assert scanner._router_vendor_cell(ap).plain == "Matrix 30%"
     assert scanner._router_kind_cell(ap).plain == ""
+
+
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("no_usb_devices")
+async def test_scanner_wps_m1_probe_updates_ap_identity(monkeypatch):
+    ap = AccessPoint(bssid="aa:bb:cc:00:00:50", ssid="Router", channel=1, wps=True)
+    result = WpsM1ProbeResult(
+        True,
+        WpsM1Identity(manufacturer="TP-Link", model_name="Archer AX10", device_name="Office"),
+    )
+
+    async def fake_probe(array, target):
+        assert target is ap
+        return result
+
+    import wifit3.ui.screens.scanner as scanner_module
+
+    monkeypatch.setattr(scanner_module, "probe_wps_m1", fake_probe)
+    app = WifiteApp()
+    async with app.run_test() as pilot:
+        app.array = _FakeArray([ap], [1, 6, 11])
+        app.push_screen("scanner")
+        await pilot.pause(0)
+        scanner = app.screen
+        assert isinstance(scanner, ScannerView)
+        scanner.notify = lambda *args, **kwargs: None
+
+        scanner.refresh_table()
+        await scanner._probe_wps_m1(ap)
+
+    assert ap.wps_manufacturer == "TP-Link"
+    assert ap.wps_model_name == "Archer AX10"
+    assert ap.wps_device_name == "Office"
+    fp = ap.router_fingerprint
+    assert fp is not None
+    assert fp.vendor == "TP-Link"
+    assert fp.model == "Archer AX10"
+    assert fp.kind == "router"
 
 
 def test_ssid_chips_zero_one_two(monkeypatch):
