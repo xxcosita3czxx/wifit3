@@ -107,10 +107,12 @@ async def test_channel_modal_returns_focus_to_table():
         assert app.focused is table
 
 
-def test_scanner_has_sortable_vendor_and_model_columns():
+def test_scanner_has_sortable_vendor_and_type_columns_after_ssid():
     columns = [key for key, _label in ScannerView._COLUMNS]
     assert "vendor" in columns
-    assert "model" in columns
+    assert "kind" in columns
+    assert "model" not in columns
+    assert columns.index("ssid") < columns.index("vendor") < columns.index("kind")
 
 
 def test_scanner_router_fingerprint_cells_show_confidence():
@@ -124,9 +126,9 @@ def test_scanner_router_fingerprint_cells_show_confidence():
         wps_model_name="hAP ac²",
     )
     vendor = scanner._router_vendor_cell(ap)
-    model = scanner._router_model_cell(ap)
+    kind = scanner._router_kind_cell(ap)
     assert vendor.plain == "MikroTik 99%"
-    assert model.plain == "hAP ac² 99%"
+    assert kind.plain == "router 99%"
 
 
 def test_ssid_chips_zero_one_two(monkeypatch):

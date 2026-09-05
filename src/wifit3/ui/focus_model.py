@@ -223,7 +223,7 @@ def router_identity_markup(ap) -> str:
     name = fp.model if fp.model and fp.model_confidence >= 0.75 else fp.vendor
     if not name:
         return ""
-    return f"[accent]{escape(name[:10])}[/accent] [dim]{round(fp.confidence * 100)}%[/dim]"
+    return f"[accent]{escape(name)}[/accent] [dim]{round(fp.confidence * 100)}%[/dim]"
 
 
 def router_identity_tooltip(ap) -> str | None:
