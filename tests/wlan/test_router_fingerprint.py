@@ -82,6 +82,22 @@ def test_o2_smartbox_ssid_pattern_sets_brand():
     assert fp.label == "O2 router"
 
 
+def test_celeno_manufacturer_with_vodafone_ssid_sets_brand():
+    fp = AccessPoint(
+        bssid="02:00:00:00:00:01",
+        ssid="Vodafone-123456",
+        wps_manufacturer="Celeno",
+    ).router_fingerprint
+    assert fp is not None
+    assert fp.brand == "Vodafone"
+    assert fp.brand_confidence == 0.70
+    assert fp.vendor == "Celeno"
+    assert fp.vendor_confidence == 0.99
+    assert fp.kind == "router"
+    assert fp.kind_confidence == 0.99
+    assert fp.label == "Possible Vodafone router"
+
+
 def test_brand_and_hardware_vendor_are_separate_claims():
     def isp_brand_rule(ap):
         brand_ev = RouterEvidence("ssid.pattern", "brand", "O2", 0.82)

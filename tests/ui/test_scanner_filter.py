@@ -130,12 +130,15 @@ async def test_channel_modal_returns_focus_to_table():
         assert app.focused is table
 
 
-def test_scanner_has_sortable_vendor_and_type_columns_after_ssid():
+def test_scanner_has_sortable_brand_and_type_columns_after_ssid():
     columns = [key for key, _label in ScannerView._COLUMNS]
-    assert "vendor" in columns
+    labels = dict(ScannerView._COLUMNS)
+    assert "brand" in columns
+    assert labels["brand"] == "BRAND"
+    assert "vendor" not in columns
     assert "kind" in columns
     assert "model" not in columns
-    assert columns.index("ssid") < columns.index("vendor") < columns.index("kind")
+    assert columns.index("ssid") < columns.index("brand") < columns.index("kind")
 
 
 def test_scanner_has_wps_m1_probe_keybind():
@@ -153,9 +156,9 @@ def test_scanner_router_fingerprint_cells_show_confidence():
         wps_manufacturer="MikroTik",
         wps_model_name="hAP ac²",
     )
-    vendor = scanner._router_vendor_cell(ap)
+    brand = scanner._router_brand_cell(ap)
     kind = scanner._router_kind_cell(ap)
-    assert vendor.plain == "MikroTik 99%"
+    assert brand.plain == "MikroTik 99%"
     assert kind.plain == "router 99%"
 
 
@@ -163,8 +166,38 @@ def test_scanner_router_type_cell_blank_without_type_confidence():
     scanner = ScannerView()
     scanner._theme_fg = "white"
     ap = AccessPoint(bssid="00:00:0b:aa:bb:cc")
-    assert scanner._router_vendor_cell(ap).plain == "Matrix 30%"
+    assert scanner._router_brand_cell(ap).plain == "Matrix 30%"
     assert scanner._router_kind_cell(ap).plain == ""
+
+
+def test_scanner_brand_cell_prefers_brand_over_hardware_vendor():
+    scanner = ScannerView()
+    scanner._theme_fg = "white"
+    ap = AccessPoint(
+        bssid="02:00:00:00:00:01",
+        ssid="O2SMARTBOX-123456",
+        wps_manufacturer="Kaon Group",
+    )
+    fp = ap.router_fingerprint
+    assert fp is not None
+    assert fp.brand == "O2"
+    assert fp.vendor == "Kaon"
+    assert scanner._router_brand_cell(ap).plain == "O2 95%"
+
+
+def test_scanner_brand_cell_shows_vodafone_over_celeno_manufacturer():
+    scanner = ScannerView()
+    scanner._theme_fg = "white"
+    ap = AccessPoint(
+        bssid="02:00:00:00:00:01",
+        ssid="Vodafone-123456",
+        wps_manufacturer="Celeno",
+    )
+    fp = ap.router_fingerprint
+    assert fp is not None
+    assert fp.brand == "Vodafone"
+    assert fp.vendor == "Celeno"
+    assert scanner._router_brand_cell(ap).plain == "Vodafone 70%"
 
 
 @pytest.mark.asyncio

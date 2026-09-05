@@ -182,12 +182,25 @@ def o2_smartbox_brand_rule(ap: "AccessPoint") -> Iterable[RouterClaim]:
     )
 
 
+def celeno_vodafone_brand_rule(ap: "AccessPoint") -> Iterable[RouterClaim]:
+    manufacturer = _text(getattr(ap, "wps_manufacturer", None))
+    ssid = _text(getattr(ap, "ssid", None))
+    if not manufacturer or not ssid:
+        return ()
+    if "celeno" not in manufacturer.lower() or "vodafone" not in ssid.lower():
+        return ()
+    evidence = RouterEvidence("brand.celeno_vodafone", "ssid", ssid, 0.70)
+    return (RouterClaim("brand", "Vodafone", 0.70, (evidence,)),)
+
+
 IDENTIFY_RULES: tuple[RouterRule, ...] = (
     oui_vendor_rule,
     router_oui_rule,
     tplink_router_rule,
     passive_wps_identity_rule,
-    o2_smartbox_brand_rule,
+    # brand rules are only used for identification, not distinction
+    o2_smartbox_brand_rule, # added czech isp's i know of / found
+    celeno_vodafone_brand_rule, 
 )
 DISTINGUISH_RULES: tuple[RouterRule, ...] = (
     passive_wps_model_rule,

@@ -233,7 +233,7 @@ class ScannerView(Screen):
         ("encryption", "ENCRYPT"),
         ("wps", "WPS"),
         ("ssid", "SSID"),
-        ("vendor", "VENDOR"),
+        ("brand", "BRAND"),
         ("kind", "TYPE"),
     ]
 
@@ -288,8 +288,9 @@ class ScannerView(Screen):
 
     async def on_mount(self) -> None:
         log = self.query_one("#system-log", RichLog)
+        scanner_sort = "brand" if Config.scanner_sort == "vendor" else Config.scanner_sort
         self._sort_idx = next(
-            (i for i, (key, _label) in enumerate(self._COLUMNS) if key == Config.scanner_sort), 2)
+            (i for i, (key, _label) in enumerate(self._COLUMNS) if key == scanner_sort), 2)
         self._sort_reverse = Config.scanner_sort_reverse
         self._update_column_headers()
         self.query_one("#ap-table", DataTable).focus()
@@ -525,15 +526,19 @@ class ScannerView(Screen):
             Text.from_markup(format_encryption_markup(ap, muted=fg), emoji=False, style=fg),
             wps_cell,
             self._ssid_cell(ap),
-            self._router_vendor_cell(ap),
+            self._router_brand_cell(ap),
             self._router_kind_cell(ap),
         ]
 
-    def _router_vendor_cell(self, ap: AccessPoint) -> Text:
+    def _router_brand_cell(self, ap: AccessPoint) -> Text:
         fp = ap.router_fingerprint
-        if fp is None or not fp.vendor:
+        if fp is None:
             return Text("", style=self._theme_fg)
-        return Text(f"{fp.vendor} {round(fp.vendor_confidence * 100)}%", style=self._theme_fg)
+        name = fp.brand or fp.vendor
+        confidence = fp.brand_confidence if fp.brand else fp.vendor_confidence
+        if not name:
+            return Text("", style=self._theme_fg)
+        return Text(f"{name} {round(confidence * 100)}%", style=self._theme_fg)
 
     def _router_kind_cell(self, ap: AccessPoint) -> Text:
         fp = ap.router_fingerprint
