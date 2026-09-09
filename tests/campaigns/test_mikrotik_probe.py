@@ -21,11 +21,12 @@ def test_build_mikrotik_discovery_frames_are_tods_ipv4_udp():
     bssid = str_to_mac("aa:bb:cc:dd:ee:ff")
     our_mac = str_to_mac("02:00:00:00:00:01")
     frames = build_mikrotik_discovery_frames(bssid, our_mac)
-    assert len(frames) == 2
+    assert len(frames) == 3
     assert all(frame[:2] == b"\x08\x01" for frame in frames)
     assert all(frame[4:10] == bssid for frame in frames)
     assert all(frame[10:16] == our_mac for frame in frames)
-    assert {struct.unpack(">H", frame[24 + 8 + 20 + 2:24 + 8 + 20 + 4])[0] for frame in frames} == {5678, 20561}
+    assert [frame[16:22] for frame in frames] == [b"\xff" * 6, b"\xff" * 6, bssid]
+    assert [struct.unpack(">H", frame[24 + 8 + 20 + 2:24 + 8 + 20 + 4])[0] for frame in frames] == [5678, 20561, 20561]
 
 
 def test_mikrotik_response_matches_winbox_or_neighbor_udp_port():
@@ -52,7 +53,7 @@ def test_mikrotik_claims_split_mac_winbox_from_neighbor_discovery():
     our_mac = str_to_mac("02:00:00:00:00:01")
     winbox = mikrotik_claims_from_frame(_fromds_frame(bssid, our_mac, _udp_ipv4(20561, 49000)), passive=True)
     neighbor = mikrotik_claims_from_frame(_fromds_frame(bssid, our_mac, _udp_ipv4(5678, 49000)), passive=True)
-    assert winbox[0].evidence[0].source == "mikrotik.mac_winbox"
+    assert winbox[0].evidence[0].source == "mikrotik.winbox.mac"
     assert winbox[0].confidence == 0.99
-    assert neighbor[0].evidence[0].source == "mikrotik.neighbor"
+    assert neighbor[0].evidence[0].source == "mikrotik.winbox.neighbours"
     assert neighbor[0].confidence == 0.70

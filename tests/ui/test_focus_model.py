@@ -277,7 +277,7 @@ def test_router_identity_details_can_show_brand_and_vendor_separately():
 
 
 def test_router_identity_details_shows_conflict_warning():
-    mikrotik_evidence = RouterEvidence("mikrotik.mac_winbox", "reachable", "true", 0.99)
+    mikrotik_evidence = RouterEvidence("mikrotik.winbox.mac", "reachable", "true", 0.99)
     ubnt_evidence = RouterEvidence("ubnt.discovery", "reachable", "true", 0.99)
     ap = AccessPoint(
         bssid="02:00:00:00:00:01",
@@ -292,7 +292,7 @@ def test_router_identity_details_shows_conflict_warning():
     assert "Conflict! (possible spoofed device)" in details
     assert "MikroTik (99%)" in details
     assert "Ubiquiti (99%)" in details
-    assert "mikrotik.mac_winbox" in details
+    assert "mikrotik.winbox.mac" in details
     assert "ubnt.discovery" in details
 
 

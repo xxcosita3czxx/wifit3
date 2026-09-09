@@ -46,11 +46,22 @@ def _ipv4_udp(src_port: int, dst_port: int, payload: bytes) -> bytes:
 
 
 def build_mikrotik_discovery_frames(bssid: bytes, our_mac: bytes) -> tuple[bytes, ...]:
-    header = b"\x08\x01\x00\x00" + bssid + our_mac + _BROADCAST + b"\x00\x00"
-    return (
-        header + _LLC_SNAP_IPV4 + _ipv4_udp(5678, 5678, _MNDP_DISCOVERY),
-        header + _LLC_SNAP_IPV4 + _ipv4_udp(20561, 20561, _WINBOX_DISCOVERY),
-    )
+    neighbour = _tods_ipv4_udp_frame(bssid, our_mac, _BROADCAST, 5678, 5678, _MNDP_DISCOVERY)
+    winbox_broadcast = _tods_ipv4_udp_frame(bssid, our_mac, _BROADCAST, 20561, 20561, _WINBOX_DISCOVERY)
+    winbox_mac = _tods_ipv4_udp_frame(bssid, our_mac, bssid, 20561, 20561, _WINBOX_DISCOVERY)
+    return (neighbour, winbox_broadcast, winbox_mac)
+
+
+def _tods_ipv4_udp_frame(
+    bssid: bytes,
+    our_mac: bytes,
+    dest: bytes,
+    src_port: int,
+    dst_port: int,
+    payload: bytes,
+) -> bytes:
+    header = b"\x08\x01\x00\x00" + bssid + our_mac + dest + b"\x00\x00"
+    return header + _LLC_SNAP_IPV4 + _ipv4_udp(src_port, dst_port, payload)
 
 
 def _mikrotik_ports_in_frame(frame: bytes) -> frozenset[int]:
@@ -94,9 +105,9 @@ def mikrotik_claims(source: str, *, passive: bool, confidence: float = 0.99) -> 
 def mikrotik_claims_from_frame(frame: bytes, *, passive: bool) -> tuple[RouterClaim, ...]:
     ports = _mikrotik_ports_in_frame(frame)
     if 20561 in ports:
-        return mikrotik_claims("mikrotik.mac_winbox", passive=passive, confidence=0.99)
+        return mikrotik_claims("mikrotik.winbox.mac", passive=passive, confidence=0.99)
     if 5678 in ports:
-        return mikrotik_claims("mikrotik.neighbor", passive=passive, confidence=0.70)
+        return mikrotik_claims("mikrotik.winbox.neighbours", passive=passive, confidence=0.70)
     return ()
 
 

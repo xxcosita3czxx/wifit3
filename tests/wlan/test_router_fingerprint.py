@@ -112,7 +112,7 @@ def test_wifi_ext_caps_claim_is_kept_with_router_identity():
 
 def test_rules_are_pluggable_for_router_specific_checks():
     def mikrotik_tool_rule(ap):
-        evidence = RouterEvidence("mikrotik.mac_winbox", "mac_server", "reachable", 0.92)
+        evidence = RouterEvidence("mikrotik.winbox.mac", "mac_server", "reachable", 0.92)
         return (
             RouterClaim("vendor", "MikroTik", 0.92, (evidence,)),
             RouterClaim("kind", "router", 0.92, (evidence,)),
@@ -126,11 +126,11 @@ def test_rules_are_pluggable_for_router_specific_checks():
     assert fp.model_confidence == 0.0
     assert fp.confidence == 0.92
     assert fp.label == "MikroTik router"
-    assert fp.evidence[0].source == "mikrotik.mac_winbox"
+    assert fp.evidence[0].source == "mikrotik.winbox.mac"
 
 
 def test_strong_conflicting_claims_flag_possible_spoof_without_dropping_evidence():
-    mikrotik_evidence = RouterEvidence("mikrotik.mac_winbox", "reachable", "true", 0.99, passive=False)
+    mikrotik_evidence = RouterEvidence("mikrotik.winbox.mac", "reachable", "true", 0.99, passive=False)
     ubnt_evidence = RouterEvidence("ubnt.discovery", "reachable", "true", 0.99, passive=False)
     ap = AccessPoint(
         bssid="02:00:00:00:00:01",
@@ -146,7 +146,7 @@ def test_strong_conflicting_claims_flag_possible_spoof_without_dropping_evidence
     assert len(fp.conflicts) == 1
     assert fp.conflicts[0].name == "vendor"
     assert {claim.value for claim in fp.conflicts[0].claims} == {"MikroTik", "Ubiquiti"}
-    assert {e.source for e in fp.evidence} >= {"mikrotik.mac_winbox", "ubnt.discovery"}
+    assert {e.source for e in fp.evidence} >= {"mikrotik.winbox.mac", "ubnt.discovery"}
     assert {claim.value for claim in fp.claims if claim.name == "vendor"} >= {"MikroTik", "Ubiquiti"}
 
 
@@ -168,7 +168,7 @@ def test_weak_conflicting_claims_do_not_flag_possible_spoof():
 
 
 def test_active_probe_claims_are_part_of_router_fingerprint():
-    evidence = RouterEvidence("mikrotik.mac_winbox", "reachable", "true", 0.99, passive=False)
+    evidence = RouterEvidence("mikrotik.winbox.mac", "reachable", "true", 0.99, passive=False)
     ap = AccessPoint(
         bssid="02:00:00:00:00:01",
         router_claims=(

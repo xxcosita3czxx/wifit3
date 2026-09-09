@@ -329,10 +329,10 @@ async def test_scanner_info_probe_cancelled_by_same_key(monkeypatch):
 @pytest.mark.usefixtures("no_usb_devices")
 async def test_scanner_info_probe_applies_active_claims(monkeypatch):
     ap = AccessPoint(bssid="aa:bb:cc:00:00:51", ssid="Router", channel=1)
-    evidence = RouterEvidence("mikrotik.mac_winbox", "reachable", "true", 0.99, passive=False)
+    evidence = RouterEvidence("mikrotik.winbox.mac", "reachable", "true", 0.99, passive=False)
     result = RouterProbeResult(
         True,
-        source="mikrotik.mac_winbox",
+        source="mikrotik.winbox.mac",
         claims=(
             RouterClaim("vendor", "MikroTik", 0.99, (evidence,)),
             RouterClaim("kind", "router", 0.99, (evidence,)),

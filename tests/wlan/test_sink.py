@@ -176,7 +176,7 @@ def test_plaintext_mikrotik_frame_passively_identifies_ap():
     assert fp.vendor == "MikroTik"
     assert fp.vendor_confidence == 0.99
     assert fp.kind == "router"
-    assert fp.evidence[0].source == "mikrotik.mac_winbox"
+    assert fp.evidence[0].source == "mikrotik.winbox.mac"
     assert fp.evidence[0].passive is True
 
 
