@@ -163,6 +163,7 @@ class WlanSink:
         pmf_required = pkt.pmf_required
         beacon_protection = pkt.beacon_protection
         wifi_generation = pkt.wifi_generation
+        extended_capabilities = pkt.extended_capabilities
         wps = pkt.wps
         wps_locked = pkt.wps_locked
         wps_version = pkt.wps_version
@@ -191,6 +192,7 @@ class WlanSink:
                 pmf_required=pmf_required,
                 beacon_protection=beacon_protection,
                 wifi_generation=wifi_generation,
+                extended_capabilities=extended_capabilities,
                 wps=wps,
                 wps_locked=wps_locked,
                 wps_version=wps_version,
@@ -226,6 +228,8 @@ class WlanSink:
                 self._recompute_siblings_for(bssid)
             if wifi_generation is not None:
                 ap.wifi_generation = max(ap.wifi_generation or 0, wifi_generation)
+            if extended_capabilities is not None:
+                ap.extended_capabilities = extended_capabilities
             # Keep the strongest encryption evidence ever seen (see _enc_rank).
             if _enc_rank(enc) >= _enc_rank(ap.encryption):
                 ap.encryption = enc

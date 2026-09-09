@@ -159,6 +159,12 @@ def test_wifi_generation_prefers_eht_over_he():
     assert parsed.wifi_generation == 7
 
 
+def test_extended_capabilities_are_preserved():
+    ext_caps = bytes.fromhex("0400080000000040")
+    parsed = WlanFrameParser.parse_80211_frame(_build_beacon(extra_ies=_ie(127, ext_caps)), -50)
+    assert parsed.extended_capabilities == ext_caps
+
+
 def test_wlan_frame_parser_validates():
     # A random bunch of bytes too small to be a frame
     assert WlanFrameParser.parse_80211_frame(b'\x00\x01\x02', -50) is None

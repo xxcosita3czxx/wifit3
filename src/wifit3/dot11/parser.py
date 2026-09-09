@@ -100,6 +100,7 @@ class WlanFrameParser:
                 "pmf_required": tags.get("pmf_required", False),
                 "beacon_protection": tags.get("beacon_protection", False),
                 "wifi_generation": tags.get("wifi_generation"),
+                "extended_capabilities": tags.get("extended_capabilities"),
                 "pairwise_cipher": tags.get("pairwise_cipher"),
                 "akms": tags.get("akms", []),
                 "akm_suites": tags.get("akm_suites", []),
@@ -558,6 +559,7 @@ class WlanFrameParser:
                 elif tag_data[0] in (106, 108): # EHT Operation / Capabilities: 802.11be / Wi-Fi 7
                     wifi_generation = max(wifi_generation or 0, 7)
             elif tag_id == 127: # Extended Capabilities: bit 84 = Beacon Protection Enabled
+                parsed["extended_capabilities"] = bytes(tag_data)
                 if tag_len >= 11:
                     beacon_protection = bool(tag_data[10] & 0x10)   # bit 84 = octet 10, bit 4
             elif tag_id == 48: # RSN (WPA2/WPA3)

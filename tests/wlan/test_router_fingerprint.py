@@ -1,7 +1,7 @@
 from wifit3.models import AccessPoint
 from wifit3.wlan.fingerprinting.router import RouterClaim, RouterEvidence, fingerprint_router
 from wifit3.wlan.fingerprinting.router_helpers import canonical_vendor
-from wifit3.wlan.fingerprinting.router_rules import wifi_generation_rule, wps_model_rule
+from wifit3.wlan.fingerprinting.router_rules import wifi_ext_caps_rule, wifi_generation_rule, wps_model_rule
 
 
 def test_oui_only_is_possible_vendor_not_exact_router():
@@ -82,6 +82,31 @@ def test_wifi_generation_claim_is_kept_with_router_identity():
     assert fp.wifi_generation == 5
     assert fp.wifi_generation_confidence == 0.99
     assert any(e.source == "wifi.generation" and e.name == "generation" and e.value == "Wi-Fi 5"
+               for e in fp.evidence)
+
+
+def test_wifi_ext_caps_alone_is_not_router_identity():
+    ap = AccessPoint(bssid="02:00:00:00:00:01", extended_capabilities=bytes.fromhex("0400080000000040"))
+    assert ap.router_fingerprint is None
+
+    claims = list(wifi_ext_caps_rule(ap))
+    assert len(claims) == 1
+    assert claims[0].name == "wifi_ext_caps"
+    assert claims[0].value == "0400080000000040"
+    assert claims[0].evidence[0].source == "wifi.ext_caps"
+    assert claims[0].evidence[0].name == "value"
+
+
+def test_wifi_ext_caps_claim_is_kept_with_router_identity():
+    fp = AccessPoint(
+        bssid="00:0a:eb:11:22:33",
+        extended_capabilities=bytes.fromhex("0400080000000040"),
+    ).router_fingerprint
+    assert fp is not None
+    assert fp.vendor == "TP-Link"
+    assert fp.wifi_ext_caps == "0400080000000040"
+    assert fp.wifi_ext_caps_confidence == 0.99
+    assert any(e.source == "wifi.ext_caps" and e.name == "value" and e.value == "0400080000000040"
                for e in fp.evidence)
 
 

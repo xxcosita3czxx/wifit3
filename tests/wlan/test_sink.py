@@ -109,6 +109,17 @@ def test_wifi_generation_keeps_newest_capability_seen():
     assert s.access_points[BSSID].wifi_generation == 6
 
 
+def test_extended_capabilities_persist_on_ap():
+    s = WlanSink()
+    first = bytes.fromhex("0400080000000040")
+    second = bytes.fromhex("0500080000000040")
+    s.update(_beacon({"extended_capabilities": first}), W0)
+    assert s.access_points[BSSID].extended_capabilities == first
+
+    s.update(_beacon({"type": "probe_resp", "extended_capabilities": second}), W0)
+    assert s.access_points[BSSID].extended_capabilities == second
+
+
 def test_wps_identity_fields_persist_on_ap():
     s = WlanSink()
     s.update(_beacon({

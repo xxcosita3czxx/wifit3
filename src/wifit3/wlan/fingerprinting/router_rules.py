@@ -115,6 +115,16 @@ def wifi_generation_rule(ap: "AccessPoint") -> Iterable[RouterClaim]:
     return (RouterClaim("wifi_generation", str(generation), 0.99, (evidence,)),)
 
 
+# Extended Capabilities are an implementation bitfield useful for model/family distinction.
+def wifi_ext_caps_rule(ap: "AccessPoint") -> Iterable[RouterClaim]:
+    ext_caps = getattr(ap, "extended_capabilities", None)
+    if not ext_caps:
+        return ()
+    value = ext_caps.hex()
+    evidence = RouterEvidence("wifi.ext_caps", "value", value, 0.99)
+    return (RouterClaim("wifi_ext_caps", value, 0.99, (evidence,)),)
+
+
 # WPS model/device name distinguishes AP-reported model identity strongly.
 def wps_model_rule(ap: "AccessPoint") -> Iterable[RouterClaim]:
     claims: list[RouterClaim] = []
@@ -241,6 +251,7 @@ IDENTIFY_RULES: tuple[RouterRule, ...] = (
 DISTINGUISH_RULES: tuple[RouterRule, ...] = (
     wps_primary_device_type_rule,
     wifi_generation_rule,
+    wifi_ext_caps_rule,
     wps_model_rule,
 )
 ROUTER_RULES: tuple[RouterRule, ...] = IDENTIFY_RULES + DISTINGUISH_RULES

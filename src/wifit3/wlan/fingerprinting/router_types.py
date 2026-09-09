@@ -45,6 +45,8 @@ class RouterFingerprint:
     kind_confidence: float = 0.0
     wifi_generation: int | None = None
     wifi_generation_confidence: float = 0.0
+    wifi_ext_caps: str | None = None
+    wifi_ext_caps_confidence: float = 0.0
     spoof_suspected: bool = False
     conflicts: tuple[RouterConflict, ...] = ()
     claims: tuple[RouterClaim, ...] = ()

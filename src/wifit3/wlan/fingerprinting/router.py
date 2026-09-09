@@ -74,6 +74,7 @@ def fingerprint_router(
     model = _best(claims, "model")
     kind = _best(claims, "kind")
     wifi_generation = _best(claims, "wifi_generation")
+    wifi_ext_caps = _best(claims, "wifi_ext_caps")
 
     vendor_value = vendor.value if vendor is not None else None
     brand_value = brand.value if brand is not None else None
@@ -83,6 +84,7 @@ def fingerprint_router(
         claims += (RouterClaim("vendor", vendor_value, model.confidence, model.evidence),)
     kind_value = kind.value if kind is not None else None
     wifi_generation_value = int(wifi_generation.value) if wifi_generation is not None else None
+    wifi_ext_caps_value = wifi_ext_caps.value if wifi_ext_caps is not None else None
     vendor_confidence = _confidence_for(claims, "vendor", vendor_value)
     brand_confidence = _confidence_for(claims, "brand", brand_value)
     model_confidence = _confidence_for(claims, "model", model_value)
@@ -90,6 +92,7 @@ def fingerprint_router(
     wifi_generation_confidence = _confidence_for(
         claims, "wifi_generation", str(wifi_generation_value) if wifi_generation_value is not None else None
     )
+    wifi_ext_caps_confidence = _confidence_for(claims, "wifi_ext_caps", wifi_ext_caps_value)
     show_model = model_value is not None and model_confidence >= 0.75
     if show_model:
         identity_confidence = model_confidence
@@ -129,6 +132,8 @@ def fingerprint_router(
         kind_confidence=kind_confidence,
         wifi_generation=wifi_generation_value,
         wifi_generation_confidence=wifi_generation_confidence,
+        wifi_ext_caps=wifi_ext_caps_value,
+        wifi_ext_caps_confidence=wifi_ext_caps_confidence,
         spoof_suspected=bool(conflicts),
         conflicts=conflicts,
         claims=claims,
