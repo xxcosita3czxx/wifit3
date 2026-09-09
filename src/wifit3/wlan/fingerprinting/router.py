@@ -53,7 +53,11 @@ def _evidence_for(claims: Iterable[RouterClaim]) -> tuple[RouterEvidence, ...]:
                 continue
             seen.add(item)
             evidence.append(item)
-    return tuple(evidence)
+    return tuple(sorted(evidence, key=_evidence_sort_key))
+
+
+def _evidence_sort_key(evidence: RouterEvidence) -> tuple[str, str, str, float, bool]:
+    return (evidence.source, evidence.name, evidence.value, -evidence.confidence, evidence.passive)
 
 
 def fingerprint_router(

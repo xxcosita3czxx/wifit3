@@ -10,7 +10,7 @@ from wifit3.campaigns.ubiquiti_probe import probe_ubnt
 from wifit3.campaigns.wps.m1_probe import probe_wps_m1
 from wifit3.dot11.wsc.identity import WpsM1Identity
 from wifit3.models import AccessPoint
-from wifit3.wlan.fingerprinting.router import RouterClaim
+from wifit3.wlan.fingerprinting.router import RouterClaim, RouterEvidence
 
 
 @dataclass(frozen=True)
@@ -115,34 +115,42 @@ def format_wps_m1_identity(identity: WpsM1Identity) -> str:
 
 
 def format_probe_evidence(result: RouterProbeResult) -> tuple[str, ...]:
-    seen = set()
-    lines: list[str] = list(_format_wps_probe_evidence(result.wps_identity)) if result.wps_identity else []
+    seen: set[RouterEvidence] = set()
+    evidence = list(_wps_probe_evidence(result.wps_identity)) if result.wps_identity else []
     for claim in result.claims:
-        for evidence in claim.evidence:
-            if evidence in seen:
-                continue
-            seen.add(evidence)
-            lines.append(
-                f"[dim]{escape(evidence.source)}:[/dim] {escape(evidence.name)}={escape(evidence.value)} "
-                f"({round(evidence.confidence * 100)}%)"
-            )
-    return tuple(lines)
+        evidence.extend(claim.evidence)
+    unique = []
+    for item in evidence:
+        if item in seen:
+            continue
+        seen.add(item)
+        unique.append(item)
+    return tuple(_format_evidence(item) for item in sorted(unique, key=_evidence_sort_key))
 
 
-def _format_wps_probe_evidence(identity: WpsM1Identity) -> tuple[str, ...]:
-    lines: list[str] = []
+def _wps_probe_evidence(identity: WpsM1Identity) -> tuple[RouterEvidence, ...]:
+    evidence = []
     if identity.manufacturer:
-        lines.append("[dim]wps.m1:[/dim] manufacturer="
-                     f"{escape(identity.manufacturer)} (99%)")
+        evidence.append(RouterEvidence("wps.m1", "manufacturer", identity.manufacturer, 0.99, passive=False))
     model = identity.model_name or identity.model_number
     if model:
-        lines.append(f"[dim]wps.m1:[/dim] model={escape(model)} (99%)")
+        evidence.append(RouterEvidence("wps.m1", "model", model, 0.99, passive=False))
     if identity.device_name:
-        lines.append(f"[dim]wps.m1:[/dim] device_name={escape(identity.device_name)} (99%)")
+        evidence.append(RouterEvidence("wps.m1", "device_name", identity.device_name, 0.99, passive=False))
     if identity.primary_device_type:
-        lines.append("[dim]wps.m1:[/dim] primary_device_type="
-                     f"{escape(identity.primary_device_type)} (99%)")
-    return tuple(lines)
+        evidence.append(RouterEvidence("wps.m1", "primary_device_type", identity.primary_device_type, 0.99, passive=False))
+    return tuple(evidence)
+
+
+def _format_evidence(evidence: RouterEvidence) -> str:
+    return (
+        f"[dim]{escape(evidence.source)}:[/dim] {escape(evidence.name)}={escape(evidence.value)} "
+        f"({round(evidence.confidence * 100)}%)"
+    )
+
+
+def _evidence_sort_key(evidence: RouterEvidence) -> tuple[str, str, str, float, bool]:
+    return (evidence.source, evidence.name, evidence.value, -evidence.confidence, evidence.passive)
 
 
 def _ap_wps_identity(ap: AccessPoint) -> WpsM1Identity:

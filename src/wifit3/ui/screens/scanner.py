@@ -288,7 +288,7 @@ class ScannerView(Screen):
                 # Reserve 2 chars in every header to account for sort indicator
                 table.add_column(label + "  ", key=key)
             yield table
-            yield RichLog(id="system-log", markup=True, highlight=True)
+            yield RichLog(id="system-log", markup=True, highlight=True, wrap=False)
         yield Footer()
 
     async def on_mount(self) -> None:

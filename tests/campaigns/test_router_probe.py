@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from wifit3.campaigns.router_probe import format_probe_evidence, probe_router_info
+from wifit3.campaigns.router_probe import RouterProbeResult, format_probe_evidence, probe_router_info
 from wifit3.models import AccessPoint
 from wifit3.wlan.fingerprinting.router import RouterClaim, RouterEvidence
 
@@ -78,3 +78,21 @@ async def test_router_info_probe_runs_all_methods_after_wps_success(monkeypatch)
     evidence = format_probe_evidence(result)
     assert "[dim]wps.m1:[/dim] model=O2SMARTBOX2 (99%)" in evidence
     assert "[dim]mikrotik.winbox.mac:[/dim] reachable=true (99%)" in evidence
+
+
+def test_probe_evidence_is_sorted_but_keeps_different_confidences():
+    high = RouterEvidence("wps.m1", "model", "RB5009", 0.99, passive=False)
+    low = RouterEvidence("wps.m1", "model", "RB5009", 0.70, passive=False)
+    mikrotik = RouterEvidence("mikrotik.winbox.mac", "reachable", "true", 0.99, passive=False)
+    result = RouterProbeResult(True, claims=(
+        RouterClaim("model", "RB5009", 0.70, (low,)),
+        RouterClaim("vendor", "MikroTik", 0.99, (mikrotik,)),
+        RouterClaim("model", "RB5009", 0.99, (high,)),
+        RouterClaim("kind", "router", 0.99, (mikrotik,)),
+    ))
+
+    assert format_probe_evidence(result) == (
+        "[dim]mikrotik.winbox.mac:[/dim] reachable=true (99%)",
+        "[dim]wps.m1:[/dim] model=RB5009 (99%)",
+        "[dim]wps.m1:[/dim] model=RB5009 (70%)",
+    )

@@ -232,7 +232,7 @@ def test_evidence_dedupe_keeps_different_confidence_values():
     fp = ap.router_fingerprint
 
     assert fp is not None
-    assert [e for e in fp.evidence if e.source == "wps.ie" and e.name == "model"] == [weak, strong]
+    assert [e for e in fp.evidence if e.source == "wps.ie" and e.name == "model"] == [strong, weak]
 
 
 def test_o2_smartbox_ssid_pattern_does_not_set_brand():
