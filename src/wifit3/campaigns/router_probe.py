@@ -27,30 +27,49 @@ ProbeLog = Callable[[str, str], None]
 
 async def probe_router_info(array, ap: AccessPoint, iface=None, log: ProbeLog | None = None) -> RouterProbeResult:
     failures = []
+    sources: list[str] = []
+    claims: list[RouterClaim] = []
+    wps_identity: WpsM1Identity | None = None
+
     if ap.wps:
         _log_probe_step(log, "try", "WPS M1")
         result = await probe_wps_m1(array, ap, iface=iface)
         if result.ok:
             _log_probe_step(log, "ok", "WPS M1")
-            return RouterProbeResult(ok=True, source="wps.m1", wps_identity=_ap_wps_identity(ap))
-        _log_probe_step(log, "fail", f"WPS M1: {result.detail}")
-        failures.append(f"WPS M1: {result.detail}")
+            sources.append("wps.m1")
+            wps_identity = _ap_wps_identity(ap)
+        else:
+            _log_probe_step(log, "fail", f"WPS M1: {result.detail}")
+            failures.append(f"WPS M1: {result.detail}")
 
     _log_probe_step(log, "try", "MikroTik WinBox")
     result = await probe_mikrotik(array, ap, iface=iface)
     if result.ok:
         _log_probe_step(log, "ok", "MikroTik WinBox")
-        return RouterProbeResult(ok=True, source=result.source, claims=result.claims)
-    _log_probe_step(log, "fail", f"MikroTik WinBox: {result.detail}")
-    failures.append(f"MikroTik WinBox: {result.detail}")
+        sources.append(result.source)
+        claims.extend(result.claims)
+    else:
+        _log_probe_step(log, "fail", f"MikroTik WinBox: {result.detail}")
+        failures.append(f"MikroTik WinBox: {result.detail}")
 
     _log_probe_step(log, "try", "UBNT discovery")
     result = await probe_ubnt(array, ap, iface=iface)
     if result.ok:
         _log_probe_step(log, "ok", "UBNT discovery")
-        return RouterProbeResult(ok=True, source="ubnt.discovery", claims=result.claims)
-    _log_probe_step(log, "fail", f"UBNT discovery: {result.detail}")
-    failures.append(f"UBNT discovery: {result.detail}")
+        sources.append("ubnt.discovery")
+        claims.extend(result.claims)
+    else:
+        _log_probe_step(log, "fail", f"UBNT discovery: {result.detail}")
+        failures.append(f"UBNT discovery: {result.detail}")
+
+    if sources:
+        return RouterProbeResult(
+            ok=True,
+            source=", ".join(dict.fromkeys(source for source in sources if source)),
+            detail="; ".join(failures),
+            wps_identity=wps_identity,
+            claims=tuple(dict.fromkeys(claims)),
+        )
     return RouterProbeResult(False, detail="; ".join(failures))
 
 
@@ -68,13 +87,16 @@ def format_probe_step(status: str, detail: str) -> str:
 
 
 def format_probe_result(result: RouterProbeResult) -> str:
+    parts: list[str] = []
     if result.wps_identity is not None:
         fields = format_wps_m1_identity(result.wps_identity)
-        return f"WPS M1: {fields}" if fields else "WPS M1 received"
+        parts.append(f"WPS M1: {fields}" if fields else "WPS M1 received")
     if result.claims:
         fields = ", ".join(f"{claim.name}={escape(claim.value)} {round(claim.confidence * 100)}%"
                            for claim in result.claims)
-        return f"{result.source}: {fields}" if result.source else fields
+        parts.append(f"{result.source}: {fields}" if result.source else fields)
+    if parts:
+        return "; ".join(parts)
     return result.source or "identity probe matched"
 
 
@@ -93,10 +115,8 @@ def format_wps_m1_identity(identity: WpsM1Identity) -> str:
 
 
 def format_probe_evidence(result: RouterProbeResult) -> tuple[str, ...]:
-    if result.wps_identity is not None:
-        return _format_wps_probe_evidence(result.wps_identity)
     seen = set()
-    lines: list[str] = []
+    lines: list[str] = list(_format_wps_probe_evidence(result.wps_identity)) if result.wps_identity else []
     for claim in result.claims:
         for evidence in claim.evidence:
             if evidence in seen:
