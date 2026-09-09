@@ -29,6 +29,21 @@ def _beacon(overrides=None):
     return pkt(base)
 
 
+def _data_frame(body: bytes) -> bytes:
+    bssid = str_to_mac(BSSID)
+    client = str_to_mac("02:00:00:00:00:01")
+    return b"\x08\x02\x00\x00" + client + bssid + bssid + b"\x00\x00" + body
+
+
+def _cdp_tlv(tlv_type: int, value: bytes) -> bytes:
+    return struct.pack(">HH", tlv_type, len(value) + 4) + value
+
+
+def _lldp_tlv(tlv_type: int, value: bytes) -> bytes:
+    header = (tlv_type << 9) | len(value)
+    return header.to_bytes(2, "big") + value
+
+
 def _wps_m1_frame(bssid: bytes, client: bytes) -> bytes:
     attrs = (
         WSC.tlv_u8(WSC.ATTR_VERSION, 0x10)
@@ -178,6 +193,50 @@ def test_plaintext_mikrotik_frame_passively_identifies_ap():
     assert fp.kind == "router"
     assert fp.evidence[0].source == "mikrotik.winbox.mac"
     assert fp.evidence[0].passive is True
+
+
+def test_plaintext_cdp_frame_passively_identifies_ap():
+    s = WlanSink()
+    s.update(_beacon(), W0)
+    frame = _data_frame(
+        b"\xaa\xaa\x03\x00\x00\x0c\x20\x00"
+        + b"\x02\xb4\x00\x00"
+        + _cdp_tlv(1, b"cisco-ap")
+        + _cdp_tlv(4, b"\x00\x00\x00\x01")
+        + _cdp_tlv(6, b"Cisco AP")
+    )
+    s.update(pkt({
+        "type": "data", "to_ds": False, "from_ds": True, "bssid": BSSID,
+        "source": BSSID, "dest": "02:00:00:00:00:01", "rssi": -45,
+        "raw": frame,
+    }), W0)
+    fp = s.access_points[BSSID].router_fingerprint
+    assert fp.vendor == "Cisco"
+    assert fp.kind == "router"
+    assert any(e.source == "cisco.cdp" and e.name == "platform" and e.value == "Cisco AP"
+               for e in fp.evidence)
+
+
+def test_plaintext_lldp_frame_passively_identifies_ap():
+    s = WlanSink()
+    s.update(_beacon(), W0)
+    frame = _data_frame(
+        b"\xaa\xaa\x03\x00\x00\x00\x88\xcc"
+        + _lldp_tlv(5, b"ap-1")
+        + _lldp_tlv(6, b"Cisco AP Software")
+        + _lldp_tlv(7, b"\x00\x18\x00\x18")
+        + b"\x00\x00"
+    )
+    s.update(pkt({
+        "type": "data", "to_ds": False, "from_ds": True, "bssid": BSSID,
+        "source": BSSID, "dest": "02:00:00:00:00:01", "rssi": -45,
+        "raw": frame,
+    }), W0)
+    fp = s.access_points[BSSID].router_fingerprint
+    assert fp.vendor == "Cisco"
+    assert fp.kind == "router"
+    assert any(e.source == "lldp" and e.name == "system_description" and e.value == "Cisco AP Software"
+               for e in fp.evidence)
 
 
 def test_plaintext_ubnt_frame_passively_identifies_ap():

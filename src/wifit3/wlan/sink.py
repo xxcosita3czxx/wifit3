@@ -16,6 +16,7 @@ from typing import Dict, List, Optional, Set
 from wifit3.campaigns.mikrotik_probe import is_mikrotik_plaintext_frame, mikrotik_claims_from_frame
 from wifit3.campaigns.ubiquiti_probe import is_ubnt_plaintext_frame, ubnt_claims
 from wifit3.chips.log_trace import TRACE   # registers Logger.trace + the level name
+from wifit3.wlan.fingerprinting.l2_discovery import discovery_claims_from_frame
 from wifit3.models import AccessPoint, Client, Handshake, HandshakeMessage
 from wifit3.dot11.mac import mac_to_str
 from wifit3.dot11.parser import WlanFrameParser
@@ -124,6 +125,7 @@ class WlanSink:
         self._on_wepdata_frame(pkt)
         self._on_mikrotik_frame(pkt)
         self._on_ubnt_frame(pkt)
+        self._on_l2_discovery_frame(pkt)
         self._track_client(pkt, card_id)
         self._on_eapol_frame(pkt)
 
@@ -306,6 +308,16 @@ class WlanSink:
         claims = ubnt_claims("ubnt.passive", passive=True)
         ap.router_claims = tuple(dict.fromkeys((*ap.router_claims, *claims)))
         return True
+
+    def _on_l2_discovery_frame(self, pkt: Packet) -> bool:
+        if pkt.type != "data":
+            return False
+        ap = self.access_points.get(pkt.bssid)
+        if ap is None:
+            return False
+        claims = discovery_claims_from_frame(pkt.raw, passive=True)
+        ap.router_claims = tuple(dict.fromkeys((*ap.router_claims, *claims)))
+        return bool(claims)
 
     def _track_client(self, pkt: Packet, card_id: str) -> bool:
         """Register/refresh the client STA behind a frame (assoc, probed SSIDs, decloak)."""

@@ -15,6 +15,7 @@ _MIKROTIK_PORTS = {5678, 20561}
 _MNDP_DISCOVERY = b"\x00\x00\x00\x00"
 _WINBOX_DISCOVERY = b"M2"
 
+# https://help.mikrotik.com/docs/spaces/ROS/pages/24805517/Neighbor+discovery
 
 @dataclass(frozen=True)
 class MikrotikProbeResult:

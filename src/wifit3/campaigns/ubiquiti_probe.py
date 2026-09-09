@@ -14,6 +14,7 @@ _BROADCAST = b"\xff" * 6
 _UBNT_PORT = 10001
 _UBNT_DISCOVERY = b"\x01\x00\x00\x00"
 
+# https://jrjparks.github.io/unofficial-unifi-guide/protocols/discovery.html
 
 @dataclass(frozen=True)
 class UbiquitiProbeResult:
